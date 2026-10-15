@@ -14,8 +14,11 @@ body{padding:env(safe-area-inset-top,0) 14px env(safe-area-inset-bottom,0);max-w
 h1{font-size:20px;text-align:center;color:var(--gold);margin:16px 0}
 section{display:none}
 section.on{display:block}
-input,button{font:inherit;color:var(--txt);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;margin:4px 0}
-input{width:100%}
+input,button,textarea{font:inherit;color:var(--txt);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;margin:4px 0}
+input,textarea{width:100%}
+textarea{min-height:70px;resize:vertical}
+.prev{display:block;max-width:100%;max-height:260px;border-radius:8px;margin:8px auto}
+button:disabled{opacity:.5}
 button{cursor:pointer}
 .tabs{display:flex;gap:6px;flex-wrap:wrap}
 .tab{flex:1;min-width:70px}
@@ -88,6 +91,7 @@ const THRONE=[[12,'Повелитель трона'],[8,'Хранитель тр
 
 const db=supabase.createClient(SB_URL,SB_KEY);
 let me=null,profiles={},viewId=null,rows=[],sets=[],hist=[],rests=[],season=null,sub='sum',newCycle=0;
+let scan={open:false,img:null,text:'',busy:false,res:null,err:''};
 const $=id=>document.getElementById(id);
 const today=()=>{const d=new Date(Date.now()-DAY_START_HOUR*3600e3);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const dayAdd=(d,n)=>{const t=new Date(d+'T00:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)};
@@ -289,6 +293,7 @@ function render(){
     box.appendChild(b);
   }
   if(sub==='str'){renderStrength(box,own);return}
+  if(own)box.appendChild(scanCard());
   const p=planOf(viewId);
   M.forEach(m=>{
     const v=sum(viewId,m.k),g=m.k==='kcal'?0:(p[m.k]||0);
@@ -309,6 +314,94 @@ function render(){
   if(G&&!G.over){const rc=restCard(G,own);if(rc)box.appendChild(rc)}
   box.appendChild(throneCard(own));
   const sc=settingsCard();if(sc)box.appendChild(sc);
+}
+// ===================== Сканер еды (Gemini через Supabase) =====================
+function scanReset(){scan={open:false,img:null,text:'',busy:false,res:null,err:''}}
+function scanCard(){
+  const c=mk('div','','card');
+  if(!scan.open){
+    const b=mk('button','📷 Сканер еды: фото + описание');b.style.width='100%';
+    b.onclick=()=>{scan.open=true;render()};c.appendChild(b);return c;
+  }
+  const h=mk('div','','row'),x=mk('button','✕','x');
+  x.onclick=()=>{scanReset();render()};
+  h.append(mk('b','Сканер еды'),x);c.appendChild(h);
+  if(!scan.res){
+    const f=mk('input');f.type='file';f.accept='image/*';
+    f.onchange=async()=>{
+      const file=f.files&&f.files[0];if(!file)return;
+      try{scan.img=await resizeImage(file);scan.err=''}catch(e){scan.err=e.message}
+      render();
+    };
+    c.appendChild(f);
+    if(scan.img){const im=mk('img','','prev');im.src=scan.img;c.appendChild(im)}
+    const t=mk('textarea');t.placeholder='Что это и сколько. Например: гречка с курицей, 300 г, курица отдельно 150 г';
+    t.value=scan.text;t.oninput=()=>{scan.text=t.value};
+    c.appendChild(t);
+    const b=mk('button',scan.busy?'Считаю…':'Посчитать');b.disabled=scan.busy;b.onclick=doScan;
+    c.appendChild(b);
+    c.appendChild(mk('div','Можно только фото, только описание или вместе. С описанием точнее.','sub'));
+    if(scan.err)c.appendChild(mk('div',scan.err,'err mt'));
+    return c;
+  }
+  const r=scan.res;
+  c.appendChild(mk('div',(r.name||'Блюдо')+(r.grams?' · ~'+Math.round(r.grams)+' г':''),'mt'));
+  const mkField=(label,val)=>{const l=mk('label','','chk');l.appendChild(document.createTextNode(label+': '));const i=mk('input');i.inputMode='decimal';i.value=Math.round(Number(val)||0);i.style.width='100px';l.appendChild(i);c.appendChild(l);return i};
+  const kI=mkField('Ккал',r.kcal),pI=mkField('Белок, г',r.protein_g);
+  c.appendChild(mk('div','Жиры ~'+Math.round(r.fat_g||0)+' г · Углеводы ~'+Math.round(r.carbs_g||0)+' г','sub'));
+  if(r.note)c.appendChild(mk('div',r.note,'sub mt'));
+  c.appendChild(mk('div','Это оценка нейросети: если знаешь точнее, поправь цифры перед записью.','sub mt'));
+  const ctl=mk('div','','ctl mt');
+  const ok=mk('button','Записать');ok.disabled=scan.busy;
+  ok.onclick=()=>saveScan(parseFloat(kI.value.replace(',','.'))||0,parseFloat(pI.value.replace(',','.'))||0);
+  const again=mk('button','Заново','ghost');again.onclick=()=>{scan.res=null;render()};
+  ctl.append(ok,again);c.appendChild(ctl);
+  if(scan.err)c.appendChild(mk('div',scan.err,'err mt'));
+  return c;
+}
+function resizeImage(file){
+  return new Promise((ok,bad)=>{
+    const fr=new FileReader();
+    fr.onload=()=>{
+      const im=new Image();
+      im.onload=()=>{
+        const k=Math.min(1,1024/Math.max(im.width,im.height));
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);
+        cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+        ok(cv.toDataURL('image/jpeg',0.8));
+      };
+      im.onerror=()=>bad(new Error('Не удалось открыть фото, попробуй другое'));
+      im.src=fr.result;
+    };
+    fr.onerror=()=>bad(new Error('Не удалось прочитать фото'));
+    fr.readAsDataURL(file);
+  });
+}
+async function doScan(){
+  if(!scan.img&&!scan.text.trim()){scan.err='Добавь фото или описание';render();return}
+  scan.busy=true;scan.err='';render();
+  let data=null,msg='';
+  try{
+    const r=await db.functions.invoke('food-scan',{body:{image:scan.img?scan.img.split(',')[1]:null,mime:'image/jpeg',text:scan.text.trim()}});
+    if(r.error){
+      msg=r.error.message;
+      try{const j=await r.error.context.json();if(j&&j.error)msg=j.error}catch(e){}
+    }else data=r.data;
+  }catch(e){msg=e.message||String(e)}
+  scan.busy=false;
+  if(!msg&&data&&data.error)msg=data.error;
+  if(msg||!data){scan.err='Ошибка: '+(msg||'пустой ответ');render();return}
+  scan.res=data;render();
+}
+async function saveScan(k,p){
+  const list=[{kind:'kcal',value:k,day:today()},{kind:'protein_g',value:p,day:today()}].filter(x=>x.value>0);
+  if(!list.length){alert('Нечего записывать: обе цифры нулевые');return}
+  scan.busy=true;render();
+  const {error}=await db.from('entries').insert(list);
+  scan.busy=false;
+  if(error){scan.err='Ошибка: '+error.message;render();return}
+  scanReset();refresh();
 }
 function startCard(){
   const c=mk('div','','card head');
@@ -552,7 +645,7 @@ async function undo(k){
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
 }
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me)refresh()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me&&!scan.open)refresh()});
 let lastDay=today();
 setInterval(()=>{const t=today();if(t!==lastDay){lastDay=t;if(me)refresh()}},60000);
 init();
