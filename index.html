@@ -28,6 +28,11 @@ button{cursor:pointer}
 .ctl input{flex:1;min-width:0}
 .ghost{background:none}
 .err{color:#e57373;min-height:20px}
+input[type=checkbox]{width:auto;margin-right:8px}
+.chk{display:block;margin:8px 0}
+.mt{margin-top:8px}
+.sub{opacity:.7;font-size:14px}
+.x{background:none;border:none;padding:2px 8px}
 </style></head><body>
 <h1>⚔ Выживание</h1>
 
@@ -64,7 +69,7 @@ const M=[
  {k:'toilet',t:'Туалет',u:'раз',quick:[1]}
 ];
 const db=supabase.createClient(SB_URL,SB_KEY);
-let me=null,profiles={},viewId=null,rows=[];
+let me=null,profiles={},viewId=null,rows=[],sets=[],sub='sum';
 const $=id=>document.getElementById(id);
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 function show(id){['login','name','app'].forEach(s=>$(s).classList.toggle('on',s===id))}
@@ -103,6 +108,8 @@ async function refresh(){
   const {data,error}=await db.from('entries').select('*').eq('day',today()).order('id');
   if(error){alert('Ошибка: '+error.message);return}
   rows=data;
+  const r2=await db.from('sets').select('*').order('id',{ascending:false}).limit(1000);
+  sets=(r2.data||[]).reverse();
   render();
 }
 const sum=(uid,k)=>rows.filter(r=>r.user_id===uid&&r.kind===k).reduce((a,r)=>a+Number(r.value),0);
@@ -118,6 +125,17 @@ function render(){
   });
   const own=viewId===me.id,box=$('cards');
   box.innerHTML='';
+  const canStr=profiles[viewId].has_strength&&(own||profiles[me.id].show_partner_strength);
+  if(!canStr)sub='sum';
+  if(canStr){
+    const bar=document.createElement('div');bar.className='tabs';
+    [['sum','Сводка'],['str','Силовые']].forEach(([k,n])=>{
+      const b=document.createElement('button');b.textContent=n;b.className=sub===k?'tab on':'tab';
+      b.onclick=()=>{sub=k;render()};bar.appendChild(b);
+    });
+    box.appendChild(bar);
+  }
+  if(sub==='str'){renderStrength(box,own);renderSettings(box);return}
   M.forEach(m=>{
     const v=sum(viewId,m.k),g=GOALS[m.k];
     const c=document.createElement('div');c.className='card';
@@ -150,6 +168,82 @@ function render(){
     }
     box.appendChild(c);
   });
+  renderSettings(box);
+}
+function mk(tag,txt,cls){const e=document.createElement(tag);if(txt)e.textContent=txt;if(cls)e.className=cls;return e}
+function renderStrength(box,own){
+  const mine=sets.filter(s=>s.user_id===viewId);
+  if(own){
+    const c=mk('div','','card');
+    const dl=mk('datalist');dl.id='ex';
+    [...new Set(mine.map(s=>s.exercise))].forEach(n=>{const o=mk('option');o.value=n;dl.appendChild(o)});
+    const ex=mk('input');ex.setAttribute('list','ex');ex.placeholder='Упражнение';
+    const w=mk('input');w.inputMode='decimal';w.placeholder='Вес, кг (0 если без веса)';
+    const r=mk('input');r.inputMode='numeric';r.placeholder='Повторы';
+    const b=mk('button','+ Подход');
+    b.onclick=()=>addSet(ex.value,parseFloat((w.value||'0').replace(',','.')),parseInt(r.value));
+    c.append(dl,ex,w,r,b);box.appendChild(c);
+  }
+  const t=mine.filter(s=>s.day===today());
+  const c1=mk('div','','card');
+  c1.appendChild(mk('b','Сегодня'));
+  if(!t.length)c1.appendChild(mk('div','Пока пусто','sub mt'));
+  t.forEach(s=>{
+    const row=mk('div','','row mt');
+    row.appendChild(mk('span',s.exercise+': '+Number(s.weight)+' кг × '+s.reps));
+    if(own){const x=mk('button','✕','x');x.onclick=()=>delSet(s.id);row.appendChild(x)}
+    c1.appendChild(row);
+  });
+  box.appendChild(c1);
+  const g={};
+  mine.forEach(s=>(g[s.exercise]=g[s.exercise]||[]).push(s));
+  const c2=mk('div','','card');
+  c2.appendChild(mk('b','Прогресс'));
+  if(!Object.keys(g).length)c2.appendChild(mk('div','Здесь появятся рекорды','sub mt'));
+  Object.keys(g).sort().forEach(n=>{
+    const a=g[n];
+    const best=a.reduce((x,y)=>(Number(y.weight)>Number(x.weight)||(Number(y.weight)===Number(x.weight)&&y.reps>x.reps))?y:x);
+    const days=[...new Set(a.map(s=>s.day))].sort();
+    const top=d=>Math.max(...a.filter(s=>s.day===d).map(s=>Number(s.weight)));
+    const last=days[days.length-1],prev=days[days.length-2];
+    let tr='';
+    if(prev!==undefined){const d=top(last)-top(prev);tr=d>0?' ▲':d<0?' ▼':' =';}
+    const blk=mk('div','','mt');
+    blk.appendChild(mk('div',n));
+    blk.appendChild(mk('div','Рекорд: '+Number(best.weight)+' кг × '+best.reps,'sub'));
+    blk.appendChild(mk('div','Последний раз '+last+': макс. '+top(last)+' кг'+tr,'sub'));
+    c2.appendChild(blk);
+  });
+  box.appendChild(c2);
+}
+function renderSettings(box){
+  if(viewId!==me.id)return;
+  const p=profiles[me.id];
+  const c=mk('div','','card');
+  c.appendChild(mk('b','Настройки'));
+  [['has_strength','Я веду силовые (вкладка в моём профиле)'],['show_partner_strength','Показывать силовые партнёра']].forEach(([k,label])=>{
+    const l=mk('label','','chk');
+    const i=mk('input');i.type='checkbox';i.checked=!!p[k];
+    i.onchange=async()=>{
+      const {error}=await db.from('profiles').update({[k]:i.checked}).eq('user_id',me.id);
+      if(error){alert('Ошибка: '+error.message);return}
+      refresh();
+    };
+    l.append(i,label);c.appendChild(l);
+  });
+  box.appendChild(c);
+}
+async function addSet(ex,w,r){
+  ex=ex.trim();ex=ex.charAt(0).toUpperCase()+ex.slice(1);
+  if(!ex||isNaN(w)||w<0||!(r>0)){alert('Заполни упражнение, вес и повторы');return}
+  const {error}=await db.from('sets').insert({exercise:ex,weight:w,reps:r,day:today()});
+  if(error){alert('Ошибка: '+error.message);return}
+  refresh();
+}
+async function delSet(id){
+  const {error}=await db.from('sets').delete().eq('id',id);
+  if(error){alert('Ошибка: '+error.message);return}
+  refresh();
 }
 async function add(k,v){
   if(!(v>0)){alert('Введи число больше нуля');return}
