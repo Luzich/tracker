@@ -5,7 +5,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a1412">
-<title>Выживание</title>
+<title>Хроники выживания</title>
 <style>
 :root{--bg:#1a1412;--card:#2a201b;--line:#5a4632;--gold:#d4a84b;--txt:#eadfc8;--red:#b23a3a;--blue:#3a7bd5;--green:#5a9a4a}
 *{box-sizing:border-box}
@@ -42,25 +42,25 @@ input[type=checkbox]{width:auto;margin-right:8px}
 .gold{color:var(--gold)}
 .x{background:none;border:none;padding:2px 8px}
 </style></head><body>
-<h1>⚔ Выживание</h1>
+<h1>⚔ Хроники выживания</h1>
 
 <section id="login">
-  <input id="email" type="email" placeholder="Почта" autocomplete="username">
-  <input id="pass" type="password" placeholder="Пароль" autocomplete="current-password">
-  <button onclick="login()">Войти</button>
+  <input id="email" type="email" placeholder="Почта странника" autocomplete="username">
+  <input id="pass" type="password" placeholder="Тайное слово (пароль)" autocomplete="current-password">
+  <button onclick="login()">Войти в лагерь</button>
   <div class="err" id="err"></div>
 </section>
 
 <section id="name">
-  <p>Как тебя зовут в приложении? (Илья или Даша)</p>
+  <p>Назови своё имя, странник (Илья или Даша)</p>
   <input id="nm" type="text" placeholder="Имя">
-  <button onclick="saveName()">Сохранить</button>
+  <button onclick="saveName()">Вписать в хроники</button>
 </section>
 
 <section id="app">
   <div class="tabs" id="tabs"></div>
   <div id="cards"></div>
-  <button class="ghost" onclick="logout()">Выйти</button>
+  <button class="ghost" onclick="logout()">Покинуть лагерь</button>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
@@ -103,17 +103,20 @@ const PROGRAM_RULES=[
 const progDayOf=d=>season?((dayDiff(season,d)%CYCLE)+CYCLE)%CYCLE+1:1;
 
 const M=[
- {k:'water_ml',t:'Вода',u:'мл',quick:[250,500]},
- {k:'kcal',t:'Ккал',u:'ккал',quick:[]},
- {k:'protein_g',t:'Белок',u:'г',quick:[]},
- {k:'km',t:'Километры',u:'км',quick:[]}
+ {k:'water_ml',t:'💧 Мана · вода',u:'мл',quick:[250,500]},
+ {k:'kcal',t:'❤ Жизненная сила · ккал',u:'ккал',quick:[]},
+ {k:'protein_g',t:'🩸 Эссенция плоти · белок',u:'г',quick:[]},
+ {k:'km',t:'🥾 Странствие · км',u:'км',quick:[]}
 ];
-const GL={water_ml:'Вода',protein_g:'Белок',km:'Км',food:'Еда записана'};
-const TITLES=[[30,'Легенда'],[25,'Герой'],[20,'Ветеран'],[15,'Страж'],[10,'Следопыт'],[5,'Бродяга'],[1,'Новобранец']];
-const THRONE=[[12,'Повелитель трона'],[8,'Хранитель трона'],[5,'Почётный посетитель'],[3,'Постоянный гость'],[1,'Визит вежливости'],[0,'Трон пока пустует']];
+const GL={water_ml:'Мана',protein_g:'Эссенция плоти',km:'Странствие',food:'Трапеза в летописи'};
+const TITLES=[[30,'Легенда пепла'],[25,'Победитель тьмы'],[20,'Ветеран клинка'],[15,'Страж пустоши'],[10,'Следопыт'],[5,'Бродяга'],[1,'Изгнанник']];
+const THRONE=[[12,'Повелитель трона, да славится имя его'],[8,'Хранитель трона'],[5,'Почётный паломник'],[3,'Частый гость тронного зала'],[1,'Визит вежливости к трону'],[0,'Трон пока пустует и ждёт']];
 
 const db=supabase.createClient(SB_URL,SB_KEY);
-let wl=[],progView=0;
+let wl=[],progView=0,edDay='t',moods=[],cheers=[];
+const selDay=()=>edDay==='y'?dayAdd(today(),-1):today();
+const selLabel=()=>edDay==='y'?'вчера':'сегодня';
+const CHEERS=['⚔ Держи строй!','🔥 Твоё пламя не угаснет','🛡 Горжусь тобой, соратник','💧 Испей маны!','🏆 Слава герою'];
 let me=null,profiles={},viewId=null,rows=[],sets=[],hist=[],rests=[],season=null,sub='sum',newCycle=0;
 let scan={open:false,img:null,text:'',busy:false,res:null,err:''};
 const $=id=>document.getElementById(id);
@@ -180,17 +183,20 @@ async function refresh(){
     const s=await db.from('season').select('*').eq('id',1).maybeSingle();
     if(s.error)throw s.error;
     season=s.data?s.data.start_day:null;
-    const r=await db.from('entries').select('*').eq('day',today()).order('id');
+    const r=await db.from('entries').select('*').in('day',[dayAdd(today(),-1),today()]).order('id');
     if(r.error)throw r.error;
     rows=r.data;
     hist=await loadAll('daily',['day','kind','user_id']);
     rests=await loadAll('cheat_days',['day','user_id']);
     wl=await loadAll('workout_log',['day','ex_idx']);
+    moods=await loadAll('mood',['day','user_id']);
+    await loadCheers();
   }catch(e){alert('Ошибка загрузки: '+(e.message||e));return}
   checkCycleEnd();
   render();
 }
-const sum=(uid,k)=>rows.filter(r=>r.user_id===uid&&r.kind===k).reduce((a,r)=>a+Number(r.value),0);
+const sum=(uid,k)=>rows.filter(r=>r.user_id===uid&&r.kind===k&&r.day===selDay()).reduce((a,r)=>a+Number(r.value),0);
+async function loadCheers(){const {data,error}=await db.from('cheers').select('*').order('id',{ascending:false}).limit(50);if(!error)cheers=data||[]}
 
 // ===================== Расчёт игры =====================
 function calc(){
@@ -241,11 +247,11 @@ function calc(){
     const hasK=k=>ids.every(id=>R[id].G.includes(k));
     const Q=[];
     if(two){
-      if(hasK('water_ml'))Q.push({n:'Водный дозор',d:'Оба выполнили норму воды 7 дней из 10 (привал засчитывается)',cur:Math.min(...ids.map(id=>cnt(id,'water_ml'))),tgt:7,xp:50});
-      if(hasK('protein_g'))Q.push({n:'Белковый пакт',d:'Оба выполнили норму белка 7 дней из 10 (привал засчитывается)',cur:Math.min(...ids.map(id=>cnt(id,'protein_g'))),tgt:7,xp:50});
-      Q.push({n:'Летописцы',d:'Оба записывали еду все 10 дней цикла (привал засчитывается)',cur:Math.min(...ids.map(id=>cnt(id,'food'))),tgt:10,xp:40});
+      if(hasK('water_ml'))Q.push({n:'Источник маны',d:'Оба наполнили ману до нормы 7 дней из 10 (привал засчитывается)',cur:Math.min(...ids.map(id=>cnt(id,'water_ml'))),tgt:7,xp:50});
+      if(hasK('protein_g'))Q.push({n:'Пакт плоти',d:'Оба собрали норму эссенции плоти 7 дней из 10 (привал засчитывается)',cur:Math.min(...ids.map(id=>cnt(id,'protein_g'))),tgt:7,xp:50});
+      Q.push({n:'Летописцы пира',d:'Оба вносили трапезы в летопись все 10 дней главы (привал засчитывается)',cur:Math.min(...ids.map(id=>cnt(id,'food'))),tgt:10,xp:40});
       const kmT=Math.round(ids.reduce((a,id)=>a+(R[id].p.km||0),0)*CYCLE*0.7);
-      if(kmT>0)Q.push({n:'Совместный поход',d:'Вместе пройти '+kmT+' км за цикл',cur:r1(ids.reduce((a,id)=>a+P[id].km,0)),tgt:kmT,xp:50});
+      if(kmT>0)Q.push({n:'Странствие вдвоём',d:'Вместе пройти '+kmT+' км за главу',cur:r1(ids.reduce((a,id)=>a+P[id].km,0)),tgt:kmT,xp:50});
     }
     Q.forEach(q=>{q.done=q.cur>=q.tgt});
     const joint=two&&ended&&ids.every(id=>P[id].adh>=0.7);
@@ -261,14 +267,14 @@ function calc(){
   const S=[];
   if(two){
     const sealed=C.filter(x=>x.ended&&ids.every(id=>x.P[id].adh>=0.7)).length;
-    S.push({n:'Семь печатей',d:'Оба держали план на 70%+ в 7 циклах из 9',cur:sealed,tgt:7,xp:300});
+    S.push({n:'Семь печатей',d:'Оба держали клятву на 70%+ в 7 главах из 9',cur:sealed,tgt:7,xp:300});
     let bst=0,run=0;
     days.forEach(d=>{if(ids.every(id=>R[id].D[d].good)){run++;if(run>bst)bst=run}else run=0});
-    S.push({n:'Неразрывная цепь',d:'14 хороших дней подряд у обоих',cur:bst,tgt:14,xp:150});
+    S.push({n:'Нерушимая цепь',d:'14 достойных дней подряд у обоих',cur:bst,tgt:14,xp:150});
     const wT=Math.round(ids.reduce((a,id)=>a+(R[id].p.water_ml||0),0)*SEASON*0.8/1000);
-    if(wT>0)S.push({n:'Океан',d:'Вместе выпить '+wT+' л воды за сезон',cur:r1(ids.reduce((a,id)=>a+days.reduce((b,d)=>b+val(id,d,'water_ml'),0),0)/1000),tgt:wT,xp:150});
+    if(wT>0)S.push({n:'Океан маны',d:'Вместе испить '+wT+' л маны за испытание',cur:r1(ids.reduce((a,id)=>a+days.reduce((b,d)=>b+val(id,d,'water_ml'),0),0)/1000),tgt:wT,xp:150});
     const kT=Math.round(ids.reduce((a,id)=>a+(R[id].p.km||0),0)*SEASON*0.8);
-    if(kT>0)S.push({n:'Дальний путь',d:'Вместе пройти '+kT+' км за сезон',cur:r1(ids.reduce((a,id)=>a+days.reduce((b,d)=>b+val(id,d,'km'),0),0)),tgt:kT,xp:200});
+    if(kT>0)S.push({n:'Дальний путь',d:'Вместе пройти '+kT+' км за испытание',cur:r1(ids.reduce((a,id)=>a+days.reduce((b,d)=>b+val(id,d,'km'),0),0)),tgt:kT,xp:200});
   }
   S.forEach(q=>{q.done=q.cur>=q.tgt});
   const sq=S.filter(q=>q.done).reduce((a,q)=>a+q.xp,0);
@@ -304,18 +310,21 @@ function render(){
   const tabs=$('tabs');tabs.innerHTML='';
   const tab=(id,label)=>{const b=mk('button',label,id===viewId?'tab on':'tab');b.onclick=()=>{viewId=id;if(id!=='log')newCycle=0;render()};tabs.appendChild(b)};
   Object.keys(profiles).sort((a,b)=>a===me.id?-1:b===me.id?1:0).forEach(id=>tab(id,profiles[id].name+(id===me.id?' (я)':'')));
-  if(G){tab('q','Квесты');tab('log','Летопись')}
+  if(G){tab('q','Свитки');tab('log','Летопись')}
   const box=$('cards');box.innerHTML='';
   box.appendChild(G?headCard(G):startCard());
+  const cb=cheerBanner();if(cb)box.appendChild(cb);
   if(viewId==='q'){renderQuests(box,G);return}
   if(viewId==='log'){renderLog(box,G);return}
   const own=viewId===me.id;
   if(G)box.appendChild(levelCard(G,viewId));
+  if(!own){const cc=cheerCard(viewId);if(cc)box.appendChild(cc)}
+  box.appendChild(dayToggle());
   const canStr=planOf(viewId).train&&(own||profiles[me.id].show_partner_strength!==false);
   if(!canStr)sub='sum';
   if(canStr){
     const b=mk('div','','tabs');
-    [['sum','Сводка'],['str','Силовые']].forEach(([k,n])=>{const x=mk('button',n,sub===k?'tab on':'tab');x.onclick=()=>{sub=k;render()};b.appendChild(x)});
+    [['sum','Лагерь'],['str','Кузня']].forEach(([k,n])=>{const x=mk('button',n,sub===k?'tab on':'tab');x.onclick=()=>{sub=k;render()};b.appendChild(x)});
     box.appendChild(b);
   }
   if(sub==='str'){renderStrength(box,own);return}
@@ -337,21 +346,123 @@ function render(){
     }
     box.appendChild(c);
   });
+  box.appendChild(moodCard(own));
+  box.appendChild(moodChart());
   if(G&&!G.over){const rc=restCard(G,own);if(rc)box.appendChild(rc)}
   box.appendChild(throneCard(own));
   const sc=settingsCard();if(sc)box.appendChild(sc);
+}
+// ===================== Вчера/сегодня, настроение, подбадривания =====================
+function dayToggle(){
+  const b=mk('div','','tabs');
+  [['t','Сегодня'],['y','Вчера, '+fmt(dayAdd(today(),-1))]].forEach(([k,n])=>{
+    const x=mk('button',n,edDay===k?'tab on':'tab');
+    x.onclick=()=>{edDay=k;progView=0;render()};b.appendChild(x);
+  });
+  if(edDay==='y'&&viewId===me.id){
+    const w=mk('div');w.appendChild(b);
+    w.appendChild(mk('div','Ты правишь вчерашнюю страницу летописи: всё, что добавишь или отменишь, запишется во вчера','sub gold'));
+    return w;
+  }
+  return b;
+}
+function moodCard(own){
+  const d=selDay(),m=moods.find(x=>x.user_id===viewId&&x.day===d);
+  const c=mk('div','','card'),h=mk('div','','row');
+  h.append(mk('b','🕯 Состояние духа · '+selLabel()),mk('span',m?m.score+' / 10':'не отмечено'));
+  c.appendChild(h);
+  if(own){
+    const row=mk('div','','tabs mt');
+    let note;
+    for(let i=1;i<=10;i++){
+      const b=mk('button',String(i),m&&m.score===i?'tab on':'tab');
+      b.style.minWidth='30px';b.style.padding='6px 0';
+      b.onclick=()=>saveMood(i,note.value);row.appendChild(b);
+    }
+    c.appendChild(row);
+    c.appendChild(mk('div','1: тьма поглотила · 10: дух непоколебим','sub'));
+    note=mk('input');note.type='text';note.placeholder='Пара слов о прожитом дне (по желанию)';note.value=m&&m.note?m.note:'';note.className='mt';
+    c.appendChild(note);
+    const sv=mk('button','Вписать в летопись');
+    sv.onclick=()=>{if(!m){alert('Сначала выбери оценку от 1 до 10');return}saveMood(m.score,note.value)};
+    c.appendChild(sv);
+    c.appendChild(mk('div','Опыта не даёт, чтобы оценка была честной. Соратник видит оценку и запись.','sub'));
+  }else if(m&&m.note){
+    c.appendChild(mk('div','«'+m.note+'»','sub mt'));
+  }
+  return c;
+}
+async function saveMood(score,note){
+  const {error}=await db.from('mood').upsert({user_id:me.id,day:selDay(),score,note:(note||'').trim()||null},{onConflict:'user_id,day'});
+  if(error){alert('Ошибка: '+error.message);return}
+  refresh();
+}
+function moodChart(){
+  const ids=Object.keys(profiles).sort((a,b)=>a===me.id?-1:b===me.id?1:0);
+  const N=14,td=today(),days=[];
+  for(let i=N-1;i>=0;i--)days.push(dayAdd(td,-i));
+  const c=mk('div','','card');
+  c.appendChild(mk('b','🕯 Состояние духа за 2 недели'));
+  if(!moods.some(m=>m.day>=days[0])){c.appendChild(mk('div','Здесь проступит график, когда начнёте отмечать состояние духа','sub mt'));return c}
+  const W=320,H=150,L=22,R=8,T=10,B=22,cols=['#d4a84b','#5b9bf0'];
+  const X=i=>L+(W-L-R)*i/(N-1),Y=v=>T+(H-T-B)*(10-v)/9;
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="График состояния духа">';
+  [1,5,10].forEach(v=>{svg+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="#5a4632" stroke-width="0.6"/><text x="'+(L-5)+'" y="'+(Y(v)+3)+'" fill="#eadfc8" opacity=".6" font-size="9" text-anchor="end">'+v+'</text>'});
+  [0,Math.floor(N/2),N-1].forEach(i=>{svg+='<text x="'+X(i)+'" y="'+(H-6)+'" fill="#eadfc8" opacity=".6" font-size="9" text-anchor="middle">'+fmt(days[i])+'</text>'});
+  ids.forEach((id,k)=>{
+    const pts=days.map((d,i)=>{const m=moods.find(x=>x.user_id===id&&x.day===d);return m?[X(i),Y(m.score)]:null});
+    let path='',pen=false;
+    pts.forEach(p=>{if(p){path+=(pen?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)+' ';pen=true}else pen=false});
+    if(path)svg+='<path d="'+path+'" fill="none" stroke="'+cols[k%2]+'" stroke-width="2"/>';
+    pts.forEach(p=>{if(p)svg+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3" fill="'+cols[k%2]+'"/>'});
+  });
+  svg+='</svg>';
+  const holder=mk('div','','mt');holder.innerHTML=svg;c.appendChild(holder);
+  const leg=mk('div','','sub');
+  ids.forEach((id,k)=>{const s=mk('span','● '+profiles[id].name+'   ');s.style.color=cols[k%2];leg.appendChild(s)});
+  c.appendChild(leg);
+  return c;
+}
+function cheerCard(id){
+  const c=mk('div','','card');
+  c.appendChild(mk('b','📯 Боевой клич для: '+profiles[id].name));
+  const row=mk('div','','ctl mt');
+  CHEERS.forEach(t=>{const b=mk('button',t);b.onclick=()=>sendCheer(id,t);row.appendChild(b)});
+  c.appendChild(row);
+  const last=cheers.find(x=>x.from_user===me.id&&x.to_user===id);
+  if(last)c.appendChild(mk('div','Последний клич: '+last.text+(last.seen?' · услышан':' · ещё не услышан'),'sub'));
+  return c;
+}
+async function sendCheer(id,t){
+  const {error}=await db.from('cheers').insert({to_user:id,text:t});
+  if(error){alert('Ошибка: '+error.message);return}
+  await loadCheers();render();
+}
+function cheerBanner(){
+  const un=cheers.filter(x=>x.to_user===me.id&&!x.seen);
+  if(!un.length)return null;
+  const c=mk('div','','card banner');
+  un.slice(0,5).forEach(x=>{const n=profiles[x.from_user]?profiles[x.from_user].name:'Партнёр';c.appendChild(mk('div',n+': '+x.text,'gold'))});
+  const b=mk('button','Благодарю, соратник ❤','mt');
+  b.onclick=async()=>{
+    const {error}=await db.from('cheers').update({seen:true}).eq('to_user',me.id).eq('seen',false);
+    if(error){alert('Ошибка: '+error.message);return}
+    await loadCheers();render();
+  };
+  c.appendChild(b);
+  return c;
 }
 // ===================== Сканер еды (Gemini через Supabase) =====================
 function scanReset(){scan={open:false,img:null,text:'',busy:false,res:null,err:''}}
 function scanCard(){
   const c=mk('div','','card');
   if(!scan.open){
-    const b=mk('button','📷 Сканер еды: фото + описание');b.style.width='100%';
+    const b=mk('button','🔮 Око алхимика: изучить трапезу по фото и описанию');b.style.width='100%';
     b.onclick=()=>{scan.open=true;render()};c.appendChild(b);return c;
   }
   const h=mk('div','','row'),x=mk('button','✕','x');
   x.onclick=()=>{scanReset();render()};
-  h.append(mk('b','Сканер еды'),x);c.appendChild(h);
+  h.append(mk('b','🔮 Око алхимика'),x);c.appendChild(h);
   if(!scan.res){
     const f=mk('input');f.type='file';f.accept='image/*';
     f.onchange=async()=>{
@@ -361,24 +472,24 @@ function scanCard(){
     };
     c.appendChild(f);
     if(scan.img){const im=mk('img','','prev');im.src=scan.img;c.appendChild(im)}
-    const t=mk('textarea');t.placeholder='Что это и сколько. Например: гречка с курицей, 300 г, курица отдельно 150 г';
+    const t=mk('textarea');t.placeholder='Опиши трапезу и её вес. Например: гречка с курицей, 300 г, курица отдельно 150 г';
     t.value=scan.text;t.oninput=()=>{scan.text=t.value};
     c.appendChild(t);
-    const b=mk('button',scan.busy?'Считаю…':'Посчитать');b.disabled=scan.busy;b.onclick=doScan;
+    const b=mk('button',scan.busy?'Алхимик изучает…':'Изучить');b.disabled=scan.busy;b.onclick=doScan;
     c.appendChild(b);
-    c.appendChild(mk('div','Можно только фото, только описание или вместе. С описанием точнее.','sub'));
+    c.appendChild(mk('div','Можно только фото, только описание или вместе. С описанием око видит точнее.','sub'));
     if(scan.err)c.appendChild(mk('div',scan.err,'err mt'));
     return c;
   }
   const r=scan.res;
-  c.appendChild(mk('div',(r.name||'Блюдо')+(r.grams?' · ~'+Math.round(r.grams)+' г':''),'mt'));
+  c.appendChild(mk('div',(r.name||'Трапеза')+(r.grams?' · ~'+Math.round(r.grams)+' г':''),'mt'));
   const mkField=(label,val)=>{const l=mk('label','','chk');l.appendChild(document.createTextNode(label+': '));const i=mk('input');i.inputMode='decimal';i.value=Math.round(Number(val)||0);i.style.width='100px';l.appendChild(i);c.appendChild(l);return i};
   const kI=mkField('Ккал',r.kcal),pI=mkField('Белок, г',r.protein_g);
   c.appendChild(mk('div','Жиры ~'+Math.round(r.fat_g||0)+' г · Углеводы ~'+Math.round(r.carbs_g||0)+' г','sub'));
   if(r.note)c.appendChild(mk('div',r.note,'sub mt'));
-  c.appendChild(mk('div','Это оценка нейросети: если знаешь точнее, поправь цифры перед записью.','sub mt'));
+  c.appendChild(mk('div','Это лишь предсказание алхимика: если знаешь точнее, поправь цифры перед записью.','sub mt'));
   const ctl=mk('div','','ctl mt');
-  const ok=mk('button','Записать');ok.disabled=scan.busy;
+  const ok=mk('button','Внести в летопись');ok.disabled=scan.busy;
   ok.onclick=()=>saveScan(parseFloat(kI.value.replace(',','.'))||0,parseFloat(pI.value.replace(',','.'))||0);
   const again=mk('button','Заново','ghost');again.onclick=()=>{scan.res=null;render()};
   ctl.append(ok,again);c.appendChild(ctl);
@@ -421,7 +532,7 @@ async function doScan(){
   scan.res=data;render();
 }
 async function saveScan(k,p){
-  const list=[{kind:'kcal',value:k,day:today()},{kind:'protein_g',value:p,day:today()}].filter(x=>x.value>0);
+  const list=[{kind:'kcal',value:k,day:selDay()},{kind:'protein_g',value:p,day:selDay()}].filter(x=>x.value>0);
   if(!list.length){alert('Нечего записывать: обе цифры нулевые');return}
   scan.busy=true;render();
   const {error}=await db.from('entries').insert(list);
@@ -431,13 +542,13 @@ async function saveScan(k,p){
 }
 function startCard(){
   const c=mk('div','','card head');
-  c.appendChild(mk('b','Сезон ещё не начат','gold'));
-  c.appendChild(mk('div','90 дней, 9 циклов по 10 дней. Отсчёт пойдёт для вас обоих с дня нажатия. Записи можно вести и до старта, но опыт начнёт копиться только с первого дня сезона.','sub mt'));
-  const b=mk('button','Начать','big mt');b.onclick=startSeason;c.appendChild(b);
+  c.appendChild(mk('b','Испытание ещё не началось','gold'));
+  c.appendChild(mk('div','90 дней, 9 глав по 10 дней. Отсчёт пойдёт для вас обоих с дня, когда вы выступите. Записи можно вести и до старта, но опыт начнёт копиться только с первого дня испытания.','sub mt'));
+  const b=mk('button','⚔ Начать испытание','big mt');b.onclick=startSeason;c.appendChild(b);
   return c;
 }
 async function startSeason(){
-  if(!confirm('Начать сезон? 90 дней пойдут с сегодняшнего дня для вас обоих.'))return;
+  if(!confirm('Начать испытание? 90 дней пойдут с сегодняшнего дня для вас обоих.'))return;
   const {error}=await db.from('season').insert({id:1,start_day:today()});
   if(error&&!/duplicate/i.test(error.message)){alert('Ошибка: '+error.message);return}
   viewId=me.id;refresh();
@@ -445,12 +556,12 @@ async function startSeason(){
 function headCard(G){
   const c=mk('div','','card head');
   if(G.over){
-    c.appendChild(mk('b','Сезон завершён!','gold'));
-    c.appendChild(mk('div','Все 90 дней позади. Итоги в Летописи.','sub mt'));
+    c.appendChild(mk('b','Испытание пройдено!','gold'));
+    c.appendChild(mk('div','Все 90 дней позади. Итоги ждут в Летописи.','sub mt'));
   }else{
     const k=G.curDay-(G.curC-1)*CYCLE;
     c.appendChild(mk('b','День '+G.curDay+' из '+SEASON+': выживание','gold'));
-    c.appendChild(mk('div','Цикл '+G.curC+' из '+CYCLES+' · день '+k+' из '+CYCLE,'sub mt'));
+    c.appendChild(mk('div','Глава '+G.curC+' из '+CYCLES+' · день '+k+' из '+CYCLE,'sub mt'));
     c.appendChild(bar(G.curDay,SEASON,'var(--gold)'));
   }
   return c;
@@ -462,14 +573,14 @@ function levelCard(G,id){
   h.append(mk('b','Ур. '+r.lvl+' · '+r.title),mk('span',r.xp+' XP'));
   c.appendChild(h);
   c.appendChild(bar(r.xp-r.lo,r.hi-r.lo||1,'var(--gold)'));
-  c.appendChild(mk('div',r.lvl<MAXLVL?'До уровня '+(r.lvl+1)+': '+(r.hi-r.xp)+' XP':'Максимальный уровень сезона','sub'));
-  c.appendChild(mk('div','Серия хороших дней: '+r.streak,'sub'));
+  c.appendChild(mk('div',r.lvl<MAXLVL?'До уровня '+(r.lvl+1)+': '+(r.hi-r.xp)+' XP':'Высший уровень испытания достигнут','sub'));
+  c.appendChild(mk('div','Нерушимая цепь: '+r.streak+' дн.','sub'));
   const d=r.D[today()];
   if(d&&!G.over){
-    if(d.rest)c.appendChild(mk('div','Сегодня привал: серия не прервётся','sub ok mt'));
+    if(d.rest)c.appendChild(mk('div','Сегодня привал: цепь не прервётся','sub ok mt'));
     const line=mk('div','','sub mt');
     const per=Math.round(60/r.n);
-    line.textContent='Сегодня: '+r.G.map(k=>(d.m[k]?'✓ ':'· ')+GL[k]+' +'+per).join('   ')+(d.done===r.n?'   ✓ Все цели +20':'   (все цели: ещё +20)')+(r.p.train?(d.pt?((d.trained?'   ✓ ':'   · ')+'Тренировка '+d.pd+'/'+d.pt+' +30'):'   · По программе отдых'):'');
+    line.textContent='Подвиги дня: '+r.G.map(k=>(d.m[k]?'✓ ':'· ')+GL[k]+' +'+per).join('   ')+(d.done===r.n?'   ✓ Все подвиги +20':'   (все подвиги: ещё +20)')+(r.p.train?(d.pt?((d.trained?'   ✓ ':'   · ')+'Ратный труд '+d.pd+'/'+d.pt+' +30'):'   · В кузне сегодня тишина'):'');
     c.appendChild(line);
   }
   return c;
@@ -479,9 +590,9 @@ function restCard(G,own){
   const td=today(),cs=dayAdd(season,(G.curC-1)*CYCLE),ce=dayAdd(season,G.curC*CYCLE-1);
   const mine=rests.filter(x=>x.user_id===viewId&&x.day>=cs&&x.day<=ce).map(x=>x.day).sort();
   const c=mk('div','','card'),h=mk('div','','row');
-  h.append(mk('b','Привал (читмил)'),mk('span',mine.length+' / '+REST));
+  h.append(mk('b','🔥 Привал у костра (читмил)'),mk('span',mine.length+' / '+REST));
   c.appendChild(h);
-  c.appendChild(mk('div','День без давления плана: серия не прерывается, а в итогах цикла этот день не учитывается. С новым циклом счётчик обнуляется.','sub'));
+  c.appendChild(mk('div','День у костра без давления клятвы: цепь не прерывается, а в итогах главы этот день не учитывается. С новой главой привалы восполняются.','sub'));
   mine.forEach(d=>{
     const row=mk('div','','row mt');
     row.appendChild(mk('span',(d===td?'Сегодня, ':'')+fmt(d)));
@@ -489,7 +600,7 @@ function restCard(G,own){
     c.appendChild(row);
   });
   if(own&&mine.length<REST){
-    if(!mine.includes(td)){const b=mk('button','Привал сегодня','mt');b.onclick=()=>addRest(td);c.appendChild(b)}
+    if(!mine.includes(td)){const b=mk('button','Разбить привал сегодня','mt');b.onclick=()=>addRest(td);c.appendChild(b)}
     if(td<ce){
       const ctl=mk('div','','ctl mt');
       const inp=mk('input');inp.type='date';inp.min=dayAdd(td,1);inp.max=ce;
@@ -502,8 +613,8 @@ function restCard(G,own){
 }
 async function addRest(d){
   const G=calc(),cs=dayAdd(season,(G.curC-1)*CYCLE),ce=dayAdd(season,G.curC*CYCLE-1);
-  if(d<today()||d<cs||d>ce){alert('Привал можно поставить только на сегодня или на будущий день текущего цикла');return}
-  if(rests.filter(x=>x.user_id===me.id&&x.day>=cs&&x.day<=ce).length>=REST){alert('В этом цикле привалы закончились');return}
+  if(d<today()||d<cs||d>ce){alert('Привал можно разбить только сегодня или в будущий день текущей главы');return}
+  if(rests.filter(x=>x.user_id===me.id&&x.day>=cs&&x.day<=ce).length>=REST){alert('В этой главе привалы закончились');return}
   const {error}=await db.from('cheat_days').insert({day:d});
   if(error&&!/duplicate/i.test(error.message)){alert('Ошибка: '+error.message);return}
   refresh();
@@ -515,9 +626,9 @@ async function delRest(d){
 }
 function throneCard(own){
   const v=sum(viewId,'toilet'),c=mk('div','','card'),h=mk('div','','row');
-  h.append(mk('b','🚽 Трон'),mk('span',v+' раз сегодня'));
+  h.append(mk('b','🚽 Трон'),mk('span',v+' раз '+selLabel()));
   c.appendChild(h);
-  c.appendChild(mk('div',THRONE.find(t=>v>=t[0])[1]+' · опыта не даёт, чисто для истории','sub'));
+  c.appendChild(mk('div',THRONE.find(t=>v>=t[0])[1]+' · опыта не даёт, лишь для хроник','sub'));
   if(own){
     const ctl=mk('div','','ctl');
     const b=mk('button','+1');b.onclick=()=>add('toilet',1);
@@ -531,7 +642,7 @@ function settingsCard(){
   const partner=Object.keys(profiles).find(id=>id!==me.id&&planOf(id).train);
   if(!partner)return null;
   const c=mk('div','','card');
-  c.appendChild(mk('b','Настройки'));
+  c.appendChild(mk('b','⚙ Настройки'));
   const l=mk('label','','chk'),i=mk('input');
   i.type='checkbox';i.checked=profiles[me.id].show_partner_strength!==false;
   i.onchange=async()=>{
@@ -539,7 +650,7 @@ function settingsCard(){
     if(error){alert('Ошибка: '+error.message);return}
     refresh();
   };
-  l.append(i,'Показывать силовые: '+profiles[partner].name);
+  l.append(i,'Показывать кузню: '+profiles[partner].name);
   c.appendChild(l);
   return c;
 }
@@ -552,62 +663,64 @@ function questCard(q){
   return c;
 }
 function renderQuests(box,G){
-  if(!G.two){box.appendChild(mk('div','Квесты заработают, когда в приложении будут оба профиля','sub'));return}
-  box.appendChild(mk('b','Квесты сезона','gold'));
+  if(!G.two){box.appendChild(mk('div','Свитки откроются, когда в хрониках будут оба героя','sub'));return}
+  box.appendChild(mk('b','📜 Свитки испытания','gold'));
   G.S.forEach(q=>box.appendChild(questCard(q)));
   const cur=G.C[G.C.length-1];
-  box.appendChild(mk('b','Квесты цикла '+cur.c+(cur.ended?' (завершён)':''),'gold'));
+  box.appendChild(mk('b','📜 Свитки главы '+cur.c+(cur.ended?' (завершена)':''),'gold'));
   cur.Q.forEach(q=>box.appendChild(questCard(q)));
-  box.appendChild(mk('div','Игровой день идёт с 12:00 до 12:00. Цели дня: вода, белок, километры и запись еды, каждая +15 XP, за все сразу ещё +20. Тренировка по программе: до +30 XP, пропорционально выполненным упражнениям дня. Хороший день: выполнены все цели или все кроме одной, либо привал. В конце цикла бонус до 150 XP за выполнение плана и +100 каждому, если оба держали план на 70%+. Максимальный уровень: '+MAXLVL+'.','sub mt'));
+  box.appendChild(mk('div','День в хрониках идёт с 12:00 до 12:00. Подвиги дня: мана (вода), эссенция плоти (белок), странствие (км) и трапеза в летописи, каждый +15 XP, за все сразу ещё +20. Ратный труд в кузне: до +30 XP, пропорционально выполненным упражнениям дня. Достойный день: выполнены все подвиги или все кроме одного, либо привал. В конце главы награда до 150 XP за верность клятве и благословение союза +100 каждому, если оба держали клятву на 70%+. Высший уровень: '+MAXLVL+'.','sub mt'));
 }
 function renderLog(box,G){
   if(newCycle){
     const b=mk('div','','card banner');
-    b.appendChild(mk('b','Цикл '+newCycle+' завершён! Итоги ниже.','gold'));
+    b.appendChild(mk('b','Глава '+newCycle+' завершена! Итоги ниже.','gold'));
     box.appendChild(b);
   }
   const ids=G.ids.slice().sort((a,b)=>a===me.id?-1:b===me.id?1:0);
   G.C.slice().reverse().forEach(x=>{
     const c=mk('div','','card'),h=mk('div','','row');
-    h.append(mk('b','Цикл '+x.c+' · '+fmt(x.cs)+'–'+fmt(x.ce)),mk('span',x.ended?'завершён':'идёт, день '+x.dayIn+' из '+CYCLE,'sub'));
+    h.append(mk('b','Глава '+x.c+' · '+fmt(x.cs)+'–'+fmt(x.ce)),mk('span',x.ended?'завершена':'пишется, день '+x.dayIn+' из '+CYCLE,'sub'));
     c.appendChild(h);
     const prev=G.C[x.c-2];
     ids.forEach(id=>{
       const P=x.P[id],r=G.R[id],blk=mk('div','','mt');
       let cmp='';
       if(prev){const dd=Math.round((P.adh-prev.P[id].adh)*100);cmp=dd>0?' ▲'+dd:dd<0?' ▼'+(-dd):' ='}
-      blk.appendChild(mk('b',profiles[id].name+': план выполнен на '+pct(P.adh)+(x.ended?'':' (пока)')+cmp));
+      blk.appendChild(mk('b',profiles[id].name+': клятва соблюдена на '+pct(P.adh)+(x.ended?'':' (пока)')+cmp));
       blk.appendChild(bar(P.adh,1,P.adh>=0.7?'var(--green)':''));
       blk.appendChild(mk('div',r.G.map(k=>GL[k]+' '+P.per[k]+'/'+P.eff).join(' · '),'sub'));
       const extra=[];
-      if(r.p.train)extra.push('Тренировки по программе: '+P.train+' из '+P.trainPlan);
+      if(r.p.train)extra.push('Ратный труд: '+P.train+' из '+P.trainPlan+' дней');
       extra.push('Привалов: '+P.rests);
+      const mm=moods.filter(m=>m.user_id===id&&m.day>=x.cs&&m.day<=x.ce);
+      if(mm.length)extra.push('Дух в среднем: '+r1(mm.reduce((a,m)=>a+m.score,0)/mm.length)+' из 10');
       blk.appendChild(mk('div',extra.join(' · '),'sub'));
-      let xpl='XP за цикл: '+P.total+' (дни '+P.dayXp;
-      if(P.qxp)xpl+=', квесты +'+P.qxp;
-      if(x.ended)xpl+=', итоги +'+P.bonus;
-      if(P.joint)xpl+=', совместный +'+P.joint;
+      let xpl='XP за главу: '+P.total+' (дни '+P.dayXp;
+      if(P.qxp)xpl+=', свитки +'+P.qxp;
+      if(x.ended)xpl+=', верность клятве +'+P.bonus;
+      if(P.joint)xpl+=', благословение союза +'+P.joint;
       blk.appendChild(mk('div',xpl+')','sub'));
       c.appendChild(blk);
     });
     if(x.ended&&G.two){
       const [a,b]=ids,pa=x.P[a].adh,pb=x.P[b].adh;
-      const lead=pa===pb?'Ничья: оба держали план одинаково':'Лучше держал план: '+profiles[pa>pb?a:b].name;
+      const lead=pa===pb?'Равны в доблести: оба держали клятву одинаково':'Твёрже держал клятву: '+profiles[pa>pb?a:b].name;
       c.appendChild(mk('div',lead,'sub mt'));
-      c.appendChild(mk('div',x.joint?'✓ Совместный бонус: +100 XP каждому':'Совместный бонус не взят (нужно 70%+ у обоих)',x.joint?'sub ok':'sub'));
+      c.appendChild(mk('div',x.joint?'✓ Благословение союза: +100 XP каждому':'Благословение союза не получено (нужно 70%+ у обоих)',x.joint?'sub ok':'sub'));
     }
     const qd=x.Q.filter(q=>q.done);
-    if(qd.length)c.appendChild(mk('div','Квесты: '+qd.map(q=>'✓ '+q.n).join(', '),'sub ok mt'));
+    if(qd.length)c.appendChild(mk('div','Свитки: '+qd.map(q=>'✓ '+q.n).join(', '),'sub ok mt'));
     box.appendChild(c);
   });
 }
 function renderStrength(box,own){
-  const td=today(),cur=progDayOf(td);
+  const td=selDay(),cur=progDayOf(td);
   if(!progView)progView=cur;
   const pdN=progView,P=PROGRAM[pdN-1],isToday=pdN===cur;
   const c=mk('div','','card');
   const h=mk('div','','row');
-  h.append(mk('b','День '+pdN+' из '+CYCLE+': '+P.t),mk('span',isToday?'сегодня':'просмотр','sub'));
+  h.append(mk('b','День '+pdN+' из '+CYCLE+': '+P.t),mk('span',isToday?selLabel():'просмотр','sub'));
   c.appendChild(h);
   const nav=mk('div','','tabs mt');
   for(let i=1;i<=CYCLE;i++){
@@ -617,7 +730,7 @@ function renderStrength(box,own){
     b.onclick=()=>{progView=i;render()};nav.appendChild(b);
   }
   c.appendChild(nav);
-  if(!season)c.appendChild(mk('div','Сезон не начат: пока показан день 1. После старта день программы идёт вместе с циклом.','sub mt'));
+  if(!season)c.appendChild(mk('div','Испытание не началось: пока показан день 1. После старта день кузни идёт вместе с главой.','sub mt'));
   const mine=wl.filter(x=>x.user_id===viewId&&x.day===td);
   const lastW=name=>{const a=wl.filter(x=>x.user_id===viewId&&x.exercise===name&&Number(x.weight)>0);return a.length?Number(a[a.length-1].weight):''};
   P.ex.forEach(([name,scheme],i)=>{
@@ -639,16 +752,16 @@ function renderStrength(box,own){
     c.appendChild(row);
   });
   if(P.note)c.appendChild(mk('div',P.note,'sub mt'));
-  if(isToday&&P.ex.length)c.appendChild(mk('div','Выполнено: '+Math.min(mine.length,P.ex.length)+' из '+P.ex.length+(own?'. Вес вписывай, если упражнение с гантелями: он запомнится к следующему разу.':''),'sub mt'));
+  if(isToday&&P.ex.length)c.appendChild(mk('div','Выковано: '+Math.min(mine.length,P.ex.length)+' из '+P.ex.length+(own?'. Вписывай вес, если упражнение с гантелями: кузня его запомнит.':''),'sub mt'));
   box.appendChild(c);
   const rc=mk('div','','card');
-  rc.appendChild(mk('b','Правила программы'));
+  rc.appendChild(mk('b','📖 Устав кузни'));
   PROGRAM_RULES.forEach(t=>rc.appendChild(mk('div','· '+t,'sub mt')));
   box.appendChild(rc);
   const g={};
   wl.filter(x=>x.user_id===viewId&&Number(x.weight)>0).forEach(x=>{(g[x.exercise]=g[x.exercise]||[]).push(x)});
   const c2=mk('div','','card');
-  c2.appendChild(mk('b','Веса по упражнениям'));
+  c2.appendChild(mk('b','⚒ Тяжесть железа'));
   if(!Object.keys(g).length)c2.appendChild(mk('div','Здесь появятся веса, когда начнёшь их вписывать','sub mt'));
   Object.keys(g).sort().forEach(n=>{
     const a=g[n],last=a[a.length-1],prev=a[a.length-2];
@@ -662,7 +775,7 @@ function renderStrength(box,own){
   box.appendChild(c2);
 }
 async function markEx(i,name,on,wv){
-  const day=today();
+  const day=selDay();
   let error;
   if(on){
     const w=parseFloat(String(wv||'').replace(',','.'));
@@ -675,12 +788,12 @@ async function markEx(i,name,on,wv){
 }
 async function add(k,v){
   if(!(v>0)){alert('Введи число больше нуля');return}
-  const {error}=await db.from('entries').insert({kind:k,value:v,day:today()});
+  const {error}=await db.from('entries').insert({kind:k,value:v,day:selDay()});
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
 }
 async function undo(k){
-  const mine=rows.filter(r=>r.user_id===me.id&&r.kind===k);
+  const mine=rows.filter(r=>r.user_id===me.id&&r.kind===k&&r.day===selDay());
   if(!mine.length)return;
   const {error}=await db.from('entries').delete().eq('id',mine[mine.length-1].id);
   if(error){alert('Ошибка: '+error.message);return}
@@ -688,7 +801,14 @@ async function undo(k){
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me&&!scan.open)refresh()});
 let lastDay=today();
-setInterval(()=>{const t=today();if(t!==lastDay){lastDay=t;if(me)refresh()}},60000);
+setInterval(async()=>{
+  const t=today();
+  if(t!==lastDay){lastDay=t;if(me)refresh();return}
+  if(!me||document.hidden||scan.open)return;
+  const before=cheers.filter(x=>x.to_user===me.id&&!x.seen).length;
+  await loadCheers();
+  if(cheers.filter(x=>x.to_user===me.id&&!x.seen).length>before)render();
+},60000);
 init();
 </script>
 </body></html>
