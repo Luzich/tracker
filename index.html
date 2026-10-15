@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1412">
+<title>Выживание</title>
+<style>
+:root{--bg:#1a1412;--card:#2a201b;--line:#5a4632;--gold:#d4a84b;--txt:#eadfc8;--red:#b23a3a;--blue:#3a7bd5}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);font-family:Georgia,serif}
+body{padding:env(safe-area-inset-top,0) 14px env(safe-area-inset-bottom,0);max-width:480px;margin:0 auto}
+h1{font-size:20px;text-align:center;color:var(--gold);margin:16px 0}
+section{display:none}
+section.on{display:block}
+input,button{font:inherit;color:var(--txt);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;margin:4px 0}
+input{width:100%}
+button{cursor:pointer}
+.tabs{display:flex;gap:8px}
+.tab{flex:1}
+.tab.on{background:var(--red);border-color:var(--gold)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0}
+.row{display:flex;justify-content:space-between}
+.bar{height:10px;background:#120d0b;border-radius:5px;margin:8px 0;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--blue)}
+.ctl{display:flex;gap:6px;align-items:center}
+.ctl input{flex:1;min-width:0}
+.ghost{background:none}
+.err{color:#e57373;min-height:20px}
+</style></head><body>
+<h1>⚔ Выживание</h1>
+
+<section id="login">
+  <input id="email" type="email" placeholder="Почта" autocomplete="username">
+  <input id="pass" type="password" placeholder="Пароль" autocomplete="current-password">
+  <button onclick="login()">Войти</button>
+  <div class="err" id="err"></div>
+</section>
+
+<section id="name">
+  <p>Как тебя зовут в приложении?</p>
+  <input id="nm" type="text" placeholder="Имя">
+  <button onclick="saveName()">Сохранить</button>
+</section>
+
+<section id="app">
+  <div class="tabs" id="tabs"></div>
+  <div id="cards"></div>
+  <button class="ghost" onclick="logout()">Выйти</button>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
+<script>
+const SB_URL='https://dxhsbbafmjwnamquzbjz.supabase.co';
+const SB_KEY='sb_publishable_XSjCHnz2HQ6Uh-z62TIvcg_xwuuzo-f';
+// Дневные нормы. Потом сделаем настраиваемыми.
+const GOALS={water_ml:2500,kcal:2000,protein_g:100,km:7};
+const M=[
+ {k:'water_ml',t:'Вода',u:'мл',quick:[250,500]},
+ {k:'kcal',t:'Ккал',u:'ккал',quick:[]},
+ {k:'protein_g',t:'Белок',u:'г',quick:[]},
+ {k:'km',t:'Километры',u:'км',quick:[]},
+ {k:'toilet',t:'Туалет',u:'раз',quick:[1]}
+];
+const db=supabase.createClient(SB_URL,SB_KEY);
+let me=null,profiles={},viewId=null,rows=[];
+const $=id=>document.getElementById(id);
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+function show(id){['login','name','app'].forEach(s=>$(s).classList.toggle('on',s===id))}
+
+async function init(){
+  const {data:{session}}=await db.auth.getSession();
+  if(!session){show('login');return}
+  me=session.user;
+  await loadProfiles();
+  if(!profiles[me.id]){show('name');return}
+  viewId=me.id;
+  show('app');
+  await refresh();
+}
+async function login(){
+  $('err').textContent='';
+  const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('pass').value});
+  if(error){$('err').textContent='Не вышло: '+error.message;return}
+  init();
+}
+async function logout(){await db.auth.signOut();me=null;show('login')}
+async function saveName(){
+  const n=$('nm').value.trim();
+  if(!n)return;
+  const {error}=await db.from('profiles').upsert({user_id:me.id,name:n});
+  if(error){alert('Ошибка: '+error.message);return}
+  init();
+}
+async function loadProfiles(){
+  const {data}=await db.from('profiles').select('*');
+  profiles={};
+  (data||[]).forEach(p=>profiles[p.user_id]=p);
+}
+async function refresh(){
+  await loadProfiles();
+  const {data,error}=await db.from('entries').select('*').eq('day',today()).order('id');
+  if(error){alert('Ошибка: '+error.message);return}
+  rows=data;
+  render();
+}
+const sum=(uid,k)=>rows.filter(r=>r.user_id===uid&&r.kind===k).reduce((a,r)=>a+Number(r.value),0);
+
+function render(){
+  const tabs=$('tabs');tabs.innerHTML='';
+  Object.keys(profiles).sort((a,b)=>a===me.id?-1:b===me.id?1:0).forEach(id=>{
+    const b=document.createElement('button');
+    b.textContent=profiles[id].name+(id===me.id?' (я)':'');
+    b.className=id===viewId?'tab on':'tab';
+    b.onclick=()=>{viewId=id;render()};
+    tabs.appendChild(b);
+  });
+  const own=viewId===me.id,box=$('cards');
+  box.innerHTML='';
+  M.forEach(m=>{
+    const v=sum(viewId,m.k),g=GOALS[m.k];
+    const c=document.createElement('div');c.className='card';
+    const head=document.createElement('div');head.className='row';
+    const t=document.createElement('b');t.textContent=m.t;
+    const s=document.createElement('span');s.textContent=(Math.round(v*10)/10)+(g?' / '+g:'')+' '+m.u;
+    head.append(t,s);c.appendChild(head);
+    if(g){
+      const bar=document.createElement('div');bar.className='bar';
+      const i=document.createElement('i');i.style.width=Math.min(100,v/g*100)+'%';
+      bar.appendChild(i);c.appendChild(bar);
+    }
+    if(own){
+      const ctl=document.createElement('div');ctl.className='ctl';
+      m.quick.forEach(q=>{
+        const b=document.createElement('button');b.textContent='+'+q;
+        b.onclick=()=>add(m.k,q);ctl.appendChild(b);
+      });
+      if(m.k!=='toilet'){
+        const inp=document.createElement('input');
+        inp.type='text';inp.inputMode='decimal';inp.placeholder=m.u;
+        const b=document.createElement('button');b.textContent='Добавить';
+        b.onclick=()=>add(m.k,parseFloat(inp.value.replace(',','.')));
+        ctl.append(inp,b);
+      }
+      const u=document.createElement('button');u.textContent='↩';u.className='ghost';
+      u.title='Отменить последнее';u.onclick=()=>undo(m.k);
+      ctl.appendChild(u);
+      c.appendChild(ctl);
+    }
+    box.appendChild(c);
+  });
+}
+async function add(k,v){
+  if(!(v>0)){alert('Введи число больше нуля');return}
+  const {error}=await db.from('entries').insert({kind:k,value:v,day:today()});
+  if(error){alert('Ошибка: '+error.message);return}
+  refresh();
+}
+async function undo(k){
+  const mine=rows.filter(r=>r.user_id===me.id&&r.kind===k);
+  if(!mine.length)return;
+  const {error}=await db.from('entries').delete().eq('id',mine[mine.length-1].id);
+  if(error){alert('Ошибка: '+error.message);return}
+  refresh();
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me)refresh()});
+init();
+</script>
+</body></html>
