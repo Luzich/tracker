@@ -79,6 +79,29 @@ const CYCLE=10,CYCLES=9,SEASON=CYCLE*CYCLES,REST=2,MAXLVL=30;
 // Игровой день начинается в 12:00 и длится до 11:59 следующего дня
 const DAY_START_HOUR=12;
 
+// ===== Программа тренировок Ильи (10-дневный цикл, текст как прислал Илья) =====
+const PROGRAM=[
+ {t:'Силовая A',ex:[['Подтягивания','4 × 2–3'],['Тяга гантели одной рукой','3 × 8–12 на руку'],['Жим гантелей лёжа на полу','3 × 8–12'],['Приседания с гантелью','3 × 10–15'],['Dead bug','3 × 8–10 на сторону'],['Подбородок назад','2 × 10'],['Скольжения руками по стене','2 × 10']]},
+ {t:'Осанка',ex:[['Подбородок назад','2 × 10'],['Скольжения руками по стене','2 × 10'],['Разгибание грудного отдела на спинке стула','2 × 8'],['Растяжка грудных мышц в дверном проёме','2 × 30 секунд'],['Подъёмы рук в положении W лёжа на животе','2 × 10']]},
+ {t:'Силовая B',ex:[['Румынская тяга с гантелями','3 × 8–12'],['Болгарские приседания','3 × 8–10 на ногу'],['Жим гантелей над головой','2 × 8–12'],['Подъёмы гантелей через стороны','2 × 12–15'],['Боковая планка','2 × 20–40 секунд на сторону'],['Подбородок назад','2 × 10'],['Подъёмы рук в положении W','2 × 10']]},
+ {t:'Восстановление',ex:[['Подбородок назад','2 × 10'],['Скольжения руками по стене','2 × 10'],['Разгибание грудного отдела','2 × 8'],['Растяжка грудных мышц','2 × 30 секунд']],note:'Без силовой тренировки.'},
+ {t:'Силовая C',ex:[['Подтягивания','4 × 2–3'],['Тяга двух гантелей в наклоне','3 × 8–12'],['Отжимания от пола','3 × 8–15'],['Разведения гантелей в наклоне','2 × 12–15'],['Сгибания рук с гантелями','2 × 10–15'],['Подбородок назад','2 × 10'],['Скольжения руками по стене','2 × 10']]},
+ {t:'Осанка',ex:[['Подбородок назад','2 × 10'],['Скольжения руками по стене','2 × 10'],['Разгибание грудного отдела','2 × 8'],['Растяжка грудных мышц','2 × 30 секунд'],['Подъёмы рук в положении W','2 × 10']]},
+ {t:'Восстановление',ex:[['Подбородок назад','2 × 10'],['Разгибание грудного отдела','2 × 8'],['Растяжка грудных мышц','2 × 30 секунд']],note:'Без силовой тренировки.'},
+ {t:'Силовая D',ex:[['Приседания с гантелью','3 × 10–15'],['Румынская тяга с гантелями','3 × 8–12'],['Тяга гантели одной рукой','3 × 10–12 на руку'],['Жим гантелей лёжа на полу','2 × 10–12'],['Bird dog','2 × 8–10 на сторону'],['Скольжения руками по стене','2 × 10'],['Подъёмы рук в положении W','2 × 10']]},
+ {t:'Осанка и подвижность',ex:[['Подбородок назад','2 × 10'],['Скольжения руками по стене','2 × 10'],['Разгибание грудного отдела','2 × 8'],['Растяжка грудных мышц','2 × 30 секунд'],['Подъёмы рук в положении W','2 × 10']]},
+ {t:'Полный отдых',ex:[],note:'Без силовых упражнений и обязательного комплекса для осанки. Только обычная повседневная активность.'}
+];
+const PROGRAM_RULES=[
+ 'Между тяжёлыми подходами отдыхай 2–3 минуты, между лёгкими упражнениями — 60–90 секунд.',
+ 'Не делай подтягивания до отказа. Оставляй 1–2 качественных повторения в запасе.',
+ 'Если выполняешь все подходы на верхней границе повторений с хорошей техникой, постепенно увеличивай нагрузку.',
+ 'Если появилась боль в плече или шее, прекращай провоцирующее упражнение.',
+ 'Не нужно выполнять упражнения для осанки через силу или постоянно насильно отводить плечи назад.',
+ 'Твоя задача на первые 2 недели — не рекорды, а стабильное выполнение цикла. Затем постепенно повышай нагрузку, сохраняя технику и восстановление.'
+];
+const progDayOf=d=>season?((dayDiff(season,d)%CYCLE)+CYCLE)%CYCLE+1:1;
+
 const M=[
  {k:'water_ml',t:'Вода',u:'мл',quick:[250,500]},
  {k:'kcal',t:'Ккал',u:'ккал',quick:[]},
@@ -90,6 +113,7 @@ const TITLES=[[30,'Легенда'],[25,'Герой'],[20,'Ветеран'],[15,
 const THRONE=[[12,'Повелитель трона'],[8,'Хранитель трона'],[5,'Почётный посетитель'],[3,'Постоянный гость'],[1,'Визит вежливости'],[0,'Трон пока пустует']];
 
 const db=supabase.createClient(SB_URL,SB_KEY);
+let wl=[],progView=0;
 let me=null,profiles={},viewId=null,rows=[],sets=[],hist=[],rests=[],season=null,sub='sum',newCycle=0;
 let scan={open:false,img:null,text:'',busy:false,res:null,err:''};
 const $=id=>document.getElementById(id);
@@ -159,9 +183,9 @@ async function refresh(){
     const r=await db.from('entries').select('*').eq('day',today()).order('id');
     if(r.error)throw r.error;
     rows=r.data;
-    sets=await loadAll('sets',['id']);
     hist=await loadAll('daily',['day','kind','user_id']);
     rests=await loadAll('cheat_days',['day','user_id']);
+    wl=await loadAll('workout_log',['day','ex_idx']);
   }catch(e){alert('Ошибка загрузки: '+(e.message||e));return}
   checkCycleEnd();
   render();
@@ -175,7 +199,7 @@ function calc(){
   const last=dayAdd(season,SEASON-1),upto=td<last?td:last;
   const by={},tr={},rs={};
   hist.forEach(h=>{by[h.user_id]=by[h.user_id]||{};by[h.user_id][h.day]=by[h.user_id][h.day]||{};by[h.user_id][h.day][h.kind]=Number(h.total)});
-  sets.forEach(x=>{tr[x.user_id]=tr[x.user_id]||{};tr[x.user_id][x.day]=true});
+  wl.forEach(x=>{tr[x.user_id]=tr[x.user_id]||{};tr[x.user_id][x.day]=(tr[x.user_id][x.day]||0)+1});
   rests.forEach(x=>{rs[x.user_id]=rs[x.user_id]||{};rs[x.user_id][x.day]=true});
   const days=[];
   for(let d=season;d<=upto;d=dayAdd(d,1))days.push(d);
@@ -189,9 +213,11 @@ function calc(){
       const m={};G.forEach(k=>{m[k]=metG(d,k)});
       const done=G.filter(k=>m[k]).length;
       const rest=!!(rs[id]&&rs[id][d]);
-      const trained=!!(p.train&&tr[id]&&tr[id][d]);
-      const xp=Math.round(60*done/n)+(done===n?20:0)+(trained?30:0);
-      D[d]={m,done,rest,trained,xp,good:rest||done>=n-1};
+      const pt=p.train?PROGRAM[progDayOf(d)-1].ex.length:0;
+      const pd=pt?Math.min(pt,(tr[id]&&tr[id][d])||0):0;
+      const trained=pt>0&&pd===pt;
+      const xp=Math.round(60*done/n)+(done===n?20:0)+(pt?Math.round(30*pd/pt):0);
+      D[d]={m,done,rest,trained,pt,pd,xp,good:rest||done>=n-1};
     });
     R[id]={p,G,n,D};
   });
@@ -207,7 +233,7 @@ function calc(){
       r.G.forEach(k=>{per[k]=eff.filter(d=>r.D[d].m[k]).length});
       const adh=eff.length?r.G.reduce((a,k)=>a+per[k]/eff.length,0)/r.n:0;
       P[id]={per,eff:eff.length,adh,rests:cd.length-eff.length,
-        train:cd.filter(d=>r.D[d].trained).length,
+        train:cd.filter(d=>r.D[d].trained).length,trainPlan:cd.filter(d=>r.D[d].pt>0).length,
         dayXp:cd.reduce((a,d)=>a+r.D[d].xp,0),
         km:cd.reduce((a,d)=>a+val(id,d,'km'),0)};
     });
@@ -443,7 +469,7 @@ function levelCard(G,id){
     if(d.rest)c.appendChild(mk('div','Сегодня привал: серия не прервётся','sub ok mt'));
     const line=mk('div','','sub mt');
     const per=Math.round(60/r.n);
-    line.textContent='Сегодня: '+r.G.map(k=>(d.m[k]?'✓ ':'· ')+GL[k]+' +'+per).join('   ')+(d.done===r.n?'   ✓ Все цели +20':'   (все цели: ещё +20)')+(r.p.train?(d.trained?'   ✓ Тренировка +30':'   · Тренировка +30'):'');
+    line.textContent='Сегодня: '+r.G.map(k=>(d.m[k]?'✓ ':'· ')+GL[k]+' +'+per).join('   ')+(d.done===r.n?'   ✓ Все цели +20':'   (все цели: ещё +20)')+(r.p.train?(d.pt?((d.trained?'   ✓ ':'   · ')+'Тренировка '+d.pd+'/'+d.pt+' +30'):'   · По программе отдых'):'');
     c.appendChild(line);
   }
   return c;
@@ -532,7 +558,7 @@ function renderQuests(box,G){
   const cur=G.C[G.C.length-1];
   box.appendChild(mk('b','Квесты цикла '+cur.c+(cur.ended?' (завершён)':''),'gold'));
   cur.Q.forEach(q=>box.appendChild(questCard(q)));
-  box.appendChild(mk('div','Игровой день идёт с 12:00 до 12:00. Цели дня: вода, белок, километры и запись еды, каждая +15 XP, за все сразу ещё +20, тренировка +30 XP. Хороший день: выполнены все цели или все кроме одной, либо привал. В конце цикла бонус до 150 XP за выполнение плана и +100 каждому, если оба держали план на 70%+. Максимальный уровень: '+MAXLVL+'.','sub mt'));
+  box.appendChild(mk('div','Игровой день идёт с 12:00 до 12:00. Цели дня: вода, белок, километры и запись еды, каждая +15 XP, за все сразу ещё +20. Тренировка по программе: до +30 XP, пропорционально выполненным упражнениям дня. Хороший день: выполнены все цели или все кроме одной, либо привал. В конце цикла бонус до 150 XP за выполнение плана и +100 каждому, если оба держали план на 70%+. Максимальный уровень: '+MAXLVL+'.','sub mt'));
 }
 function renderLog(box,G){
   if(newCycle){
@@ -554,7 +580,7 @@ function renderLog(box,G){
       blk.appendChild(bar(P.adh,1,P.adh>=0.7?'var(--green)':''));
       blk.appendChild(mk('div',r.G.map(k=>GL[k]+' '+P.per[k]+'/'+P.eff).join(' · '),'sub'));
       const extra=[];
-      if(r.p.train)extra.push('Тренировок: '+P.train);
+      if(r.p.train)extra.push('Тренировки по программе: '+P.train+' из '+P.trainPlan);
       extra.push('Привалов: '+P.rests);
       blk.appendChild(mk('div',extra.join(' · '),'sub'));
       let xpl='XP за цикл: '+P.total+' (дни '+P.dayXp;
@@ -576,59 +602,74 @@ function renderLog(box,G){
   });
 }
 function renderStrength(box,own){
-  const mine=sets.filter(s=>s.user_id===viewId);
-  if(own){
-    const c=mk('div','','card');
-    const dl=mk('datalist');dl.id='ex';
-    [...new Set(mine.map(s=>s.exercise))].forEach(n=>{const o=mk('option');o.value=n;dl.appendChild(o)});
-    const ex=mk('input');ex.setAttribute('list','ex');ex.placeholder='Упражнение';
-    const w=mk('input');w.inputMode='decimal';w.placeholder='Вес, кг (0 если без веса)';
-    const r=mk('input');r.inputMode='numeric';r.placeholder='Повторы';
-    const b=mk('button','+ Подход');
-    b.onclick=()=>addSet(ex.value,parseFloat((w.value||'0').replace(',','.')),parseInt(r.value));
-    c.append(dl,ex,w,r,b);box.appendChild(c);
+  const td=today(),cur=progDayOf(td);
+  if(!progView)progView=cur;
+  const pdN=progView,P=PROGRAM[pdN-1],isToday=pdN===cur;
+  const c=mk('div','','card');
+  const h=mk('div','','row');
+  h.append(mk('b','День '+pdN+' из '+CYCLE+': '+P.t),mk('span',isToday?'сегодня':'просмотр','sub'));
+  c.appendChild(h);
+  const nav=mk('div','','tabs mt');
+  for(let i=1;i<=CYCLE;i++){
+    const b=mk('button',String(i),i===pdN?'tab on':'tab');
+    b.style.minWidth='34px';b.style.padding='6px 0';
+    if(i===cur)b.style.borderColor='var(--gold)';
+    b.onclick=()=>{progView=i;render()};nav.appendChild(b);
   }
-  const t=mine.filter(s=>s.day===today());
-  const c1=mk('div','','card');
-  c1.appendChild(mk('b','Сегодня'));
-  if(!t.length)c1.appendChild(mk('div','Пока пусто','sub mt'));
-  t.forEach(s=>{
-    const row=mk('div','','row mt');
-    row.appendChild(mk('span',s.exercise+': '+Number(s.weight)+' кг × '+s.reps));
-    if(own){const x=mk('button','✕','x');x.onclick=()=>delSet(s.id);row.appendChild(x)}
-    c1.appendChild(row);
+  c.appendChild(nav);
+  if(!season)c.appendChild(mk('div','Сезон не начат: пока показан день 1. После старта день программы идёт вместе с циклом.','sub mt'));
+  const mine=wl.filter(x=>x.user_id===viewId&&x.day===td);
+  const lastW=name=>{const a=wl.filter(x=>x.user_id===viewId&&x.exercise===name&&Number(x.weight)>0);return a.length?Number(a[a.length-1].weight):''};
+  P.ex.forEach(([name,scheme],i)=>{
+    const row=mk('div','','row mt');row.style.alignItems='center';
+    const left=mk('div');
+    const done=isToday&&mine.find(x=>x.ex_idx===i);
+    left.appendChild(mk('div',(done?'✓ ':'')+name,done?'ok':''));
+    left.appendChild(mk('div',scheme,'sub'));
+    row.appendChild(left);
+    if(isToday&&own){
+      const right=mk('div','','ctl');right.style.flexWrap='nowrap';
+      const w=mk('input');w.inputMode='decimal';w.placeholder='кг';w.style.width='64px';w.style.minWidth='64px';
+      w.value=done&&done.weight!=null?Number(done.weight):lastW(name);
+      const cb=mk('input');cb.type='checkbox';cb.checked=!!done;cb.style.width='26px';cb.style.height='26px';
+      cb.onchange=()=>markEx(i,name,cb.checked,w.value);
+      w.onchange=()=>{if(cb.checked)markEx(i,name,true,w.value)};
+      right.append(w,cb);row.appendChild(right);
+    }
+    c.appendChild(row);
   });
-  box.appendChild(c1);
+  if(P.note)c.appendChild(mk('div',P.note,'sub mt'));
+  if(isToday&&P.ex.length)c.appendChild(mk('div','Выполнено: '+Math.min(mine.length,P.ex.length)+' из '+P.ex.length+(own?'. Вес вписывай, если упражнение с гантелями: он запомнится к следующему разу.':''),'sub mt'));
+  box.appendChild(c);
+  const rc=mk('div','','card');
+  rc.appendChild(mk('b','Правила программы'));
+  PROGRAM_RULES.forEach(t=>rc.appendChild(mk('div','· '+t,'sub mt')));
+  box.appendChild(rc);
   const g={};
-  mine.forEach(s=>{(g[s.exercise]=g[s.exercise]||[]).push(s)});
+  wl.filter(x=>x.user_id===viewId&&Number(x.weight)>0).forEach(x=>{(g[x.exercise]=g[x.exercise]||[]).push(x)});
   const c2=mk('div','','card');
-  c2.appendChild(mk('b','Прогресс'));
-  if(!Object.keys(g).length)c2.appendChild(mk('div','Здесь появятся рекорды','sub mt'));
+  c2.appendChild(mk('b','Веса по упражнениям'));
+  if(!Object.keys(g).length)c2.appendChild(mk('div','Здесь появятся веса, когда начнёшь их вписывать','sub mt'));
   Object.keys(g).sort().forEach(n=>{
-    const a=g[n];
-    const best=a.reduce((x,y)=>(Number(y.weight)>Number(x.weight)||(Number(y.weight)===Number(x.weight)&&y.reps>x.reps))?y:x);
-    const days=[...new Set(a.map(s=>s.day))].sort();
-    const top=d=>Math.max(...a.filter(s=>s.day===d).map(s=>Number(s.weight)));
-    const last=days[days.length-1],prev=days[days.length-2];
+    const a=g[n],last=a[a.length-1],prev=a[a.length-2];
     let tr='';
-    if(prev!==undefined){const d=top(last)-top(prev);tr=d>0?' ▲':d<0?' ▼':' =';}
+    if(prev){const d=Number(last.weight)-Number(prev.weight);tr=d>0?' ▲':d<0?' ▼':' ='}
     const blk=mk('div','','mt');
     blk.appendChild(mk('div',n));
-    blk.appendChild(mk('div','Рекорд: '+Number(best.weight)+' кг × '+best.reps,'sub'));
-    blk.appendChild(mk('div','Последний раз '+fmt(last)+': макс. '+top(last)+' кг'+tr,'sub'));
+    blk.appendChild(mk('div','Последний раз '+fmt(last.day)+': '+Number(last.weight)+' кг'+tr+' · максимум '+Math.max(...a.map(x=>Number(x.weight)))+' кг','sub'));
     c2.appendChild(blk);
   });
   box.appendChild(c2);
 }
-async function addSet(ex,w,r){
-  ex=ex.trim();ex=ex.charAt(0).toUpperCase()+ex.slice(1);
-  if(!ex||isNaN(w)||w<0||!(r>0)){alert('Заполни упражнение, вес и повторы');return}
-  const {error}=await db.from('sets').insert({exercise:ex,weight:w,reps:r,day:today()});
-  if(error){alert('Ошибка: '+error.message);return}
-  refresh();
-}
-async function delSet(id){
-  const {error}=await db.from('sets').delete().eq('id',id);
+async function markEx(i,name,on,wv){
+  const day=today();
+  let error;
+  if(on){
+    const w=parseFloat(String(wv||'').replace(',','.'));
+    ({error}=await db.from('workout_log').upsert({user_id:me.id,day,ex_idx:i,exercise:name,weight:w>0?w:null},{onConflict:'user_id,day,ex_idx'}));
+  }else{
+    ({error}=await db.from('workout_log').delete().eq('user_id',me.id).eq('day',day).eq('ex_idx',i));
+  }
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
 }
