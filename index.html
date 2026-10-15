@@ -51,6 +51,11 @@ input[type=checkbox]{width:auto;margin-right:8px}
   <div class="err" id="err"></div>
 </section>
 
+<section id="boot">
+  <p class="sub" id="bootmsg">Загрузка хроник…</p>
+  <button id="bootretry" style="display:none" onclick="init()">Повторить</button>
+</section>
+
 <section id="name">
   <p>Назови своё имя, странник (Илья или Даша)</p>
   <input id="nm" type="text" placeholder="Имя">
@@ -58,6 +63,7 @@ input[type=checkbox]{width:auto;margin-right:8px}
 </section>
 
 <section id="app">
+  <div id="status"></div>
   <div class="tabs" id="tabs"></div>
   <div id="cards"></div>
   <button class="ghost" onclick="logout()">Покинуть лагерь</button>
@@ -117,7 +123,13 @@ let wl=[],progView=0,edDay='t',moods=[],cheers=[];
 const selDay=()=>edDay==='y'?dayAdd(today(),-1):today();
 const selLabel=()=>edDay==='y'?'вчера':'сегодня';
 const CHEERS=['⚔ Держи строй!','🔥 Твоё пламя не угаснет','🛡 Горжусь тобой, соратник','💧 Испей маны!','🏆 Слава герою'];
-let me=null,profiles={},viewId=null,rows=[],sets=[],hist=[],rests=[],season=null,sub='sum',newCycle=0;
+let me=null,profiles={},viewId=null,rows=[],hist=[],rests=[],season=null,sub='sum',newCycle=0;
+let dataVer=0,calcCache=null,refreshSeq=0,seenMem=0,chain=Promise.resolve();
+// Все записи в базу идут строго по очереди: быстрые повторные нажатия не перемешиваются
+function serial(f){const p=chain.then(f);chain=p.catch(()=>{});return p}
+function setStatus(msg){const el=$('status');if(!el)return;el.innerHTML='';if(!msg)return;const c=mk('div','','card banner');c.appendChild(mk('div',msg,'err'));const b=mk('button','Повторить');b.onclick=()=>refresh();c.appendChild(b);el.appendChild(c)}
+// Разумные пределы одной записи: выше них приложение переспросит
+const LIMITS={water_ml:5000,kcal:5000,protein_g:300,km:60,toilet:5};
 let scan={open:false,img:null,text:'',busy:false,res:null,err:''};
 const $=id=>document.getElementById(id);
 const today=()=>{const d=new Date(Date.now()-DAY_START_HOUR*3600e3);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
@@ -133,34 +145,48 @@ const titleOf=L=>TITLES.find(t=>L>=t[0])[1];
 function lvlOf(xp){let L=1;while(L<MAXLVL&&xp>=xpFor(L+1))L++;return {lvl:L,lo:xpFor(L),hi:L<MAXLVL?xpFor(L+1):xpFor(L),title:titleOf(L)}}
 function mk(tag,txt,cls){const e=document.createElement(tag);if(txt!==undefined&&txt!=='')e.textContent=txt;if(cls)e.className=cls;return e}
 function bar(v,g,color){const b=mk('div','','bar'),i=mk('i');i.style.width=Math.max(0,Math.min(100,g?v/g*100:0))+'%';if(color)i.style.background=color;b.appendChild(i);return b}
-function show(id){['login','name','app'].forEach(s=>$(s).classList.toggle('on',s===id))}
+function show(id){['login','boot','name','app'].forEach(s=>$(s).classList.toggle('on',s===id))}
 
 async function init(){
-  const {data:{session}}=await db.auth.getSession();
-  if(!session){show('login');return}
-  me=session.user;
-  await loadProfiles();
+  show('boot');$('bootmsg').textContent='Загрузка хроник…';$('bootretry').style.display='none';
+  try{
+    const {data,error}=await db.auth.getSession();
+    if(error)throw error;
+    if(!data.session){show('login');return}
+    me=data.session.user;
+    await loadProfiles();
+  }catch(e){
+    $('bootmsg').textContent='Нет связи с хрониками: '+(e.message||e)+'. Проверь интернет.';
+    $('bootretry').style.display='';
+    return;
+  }
   if(!profiles[me.id]){show('name');return}
   if(!viewId)viewId=me.id;
   show('app');
   await refresh();
 }
+let loggingIn=false;
 async function login(){
+  if(loggingIn)return;
+  loggingIn=true;
   $('err').textContent='';
   const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('pass').value});
+  loggingIn=false;
   if(error){$('err').textContent='Не вышло: '+error.message;return}
   init();
 }
-async function logout(){await db.auth.signOut();me=null;viewId=null;show('login')}
+async function logout(){await db.auth.signOut();me=null;viewId=null;profiles={};rows=[];hist=[];rests=[];wl=[];moods=[];cheers=[];season=null;edDay='t';sub='sum';progView=0;newCycle=0;scanReset();dataVer++;calcCache=null;setStatus('');show('login')}
 async function saveName(){
   const n=$('nm').value.trim();
   if(!n)return;
+  if(!PLANS[n.toLowerCase()]&&!confirm('Для имени «'+n+'» нет заранее заданных норм (есть только Илья и Даша). Всё равно сохранить?'))return;
   const {error}=await db.from('profiles').upsert({user_id:me.id,name:n});
   if(error){alert('Ошибка: '+error.message);return}
   init();
 }
 async function loadProfiles(){
-  const {data}=await db.from('profiles').select('*');
+  const {data,error}=await db.from('profiles').select('*');
+  if(error)throw error;
   profiles={};
   (data||[]).forEach(p=>profiles[p.user_id]=p);
 }
@@ -178,25 +204,36 @@ async function loadAll(table,orders){
   return all;
 }
 async function refresh(){
+  if(!me)return;
+  const seq=++refreshSeq,td=today();
   try{
-    await loadProfiles();
-    const s=await db.from('season').select('*').eq('id',1).maybeSingle();
-    if(s.error)throw s.error;
-    season=s.data?s.data.start_day:null;
-    const r=await db.from('entries').select('*').in('day',[dayAdd(today(),-1),today()]).order('id');
-    if(r.error)throw r.error;
-    rows=r.data;
-    hist=await loadAll('daily',['day','kind','user_id']);
-    rests=await loadAll('cheat_days',['day','user_id']);
-    wl=await loadAll('workout_log',['day','ex_idx']);
-    moods=await loadAll('mood',['day','user_id']);
-    await loadCheers();
-  }catch(e){alert('Ошибка загрузки: '+(e.message||e));return}
+    const ok=x=>{if(x.error)throw x.error;return x.data};
+    const [pr,se,en,hi,re,wo,mo,ch]=await Promise.all([
+      db.from('profiles').select('*').then(ok),
+      db.from('season').select('*').eq('id',1).maybeSingle().then(ok),
+      db.from('entries').select('*').in('day',[dayAdd(td,-1),td]).order('id').then(ok),
+      loadAll('daily',['day','kind','user_id']),
+      loadAll('cheat_days',['day','user_id']),
+      loadAll('workout_log',['day','ex_idx']),
+      loadAll('mood',['day','user_id']),
+      db.from('cheers').select('*').order('id',{ascending:false}).limit(50).then(ok)
+    ]);
+    if(seq!==refreshSeq||!me)return; // пришёл более свежий ответ или вышли из аккаунта
+    profiles={};(pr||[]).forEach(p=>{profiles[p.user_id]=p});
+    season=se?se.start_day:null;
+    rows=en||[];hist=hi;rests=re;wl=wo;moods=mo;cheers=ch||[];
+    dataVer++;calcCache=null;
+  }catch(e){
+    if(seq===refreshSeq)setStatus('Не удалось обновить хроники: '+(e.message||e)+'. Показаны последние загруженные данные.');
+    return;
+  }
+  setStatus('');
   checkCycleEnd();
   render();
 }
 const sum=(uid,k)=>rows.filter(r=>r.user_id===uid&&r.kind===k&&r.day===selDay()).reduce((a,r)=>a+Number(r.value),0);
 async function loadCheers(){const {data,error}=await db.from('cheers').select('*').order('id',{ascending:false}).limit(50);if(!error)cheers=data||[]}
+function calcMemo(){const k=dataVer+'|'+today();if(!calcCache||calcCache.k!==k)calcCache={k,v:calc()};return calcCache.v}
 
 // ===================== Расчёт игры =====================
 function calc(){
@@ -292,20 +329,22 @@ function calc(){
 }
 function checkCycleEnd(){
   if(!season)return;
-  const G=calc();
+  const G=calcMemo();
   const ended=G.C.filter(x=>x.ended).map(x=>x.c);
   const lastE=ended.length?Math.max(...ended):0;
-  let seen=0;
-  try{seen=Number(localStorage.getItem('seenCycle_'+me.id))||0}catch(e){}
+  let seen=seenMem;
+  try{seen=Math.max(seen,Number(localStorage.getItem('seenCycle_'+me.id))||0)}catch(e){}
   if(lastE>seen){
     newCycle=lastE;viewId='log';
+    seenMem=lastE;
     try{localStorage.setItem('seenCycle_'+me.id,String(lastE))}catch(e){}
   }
 }
 
 // ===================== Экран =====================
 function render(){
-  const G=season?calc():null;
+  if(!me)return;
+  const G=season?calcMemo():null;
   if(!G&&(viewId==='q'||viewId==='log'))viewId=me.id;
   const tabs=$('tabs');tabs.innerHTML='';
   const tab=(id,label)=>{const b=mk('button',label,id===viewId?'tab on':'tab');b.onclick=()=>{viewId=id;if(id!=='log')newCycle=0;render()};tabs.appendChild(b)};
@@ -392,8 +431,9 @@ function moodCard(own){
   }
   return c;
 }
-async function saveMood(score,note){
-  const {error}=await db.from('mood').upsert({user_id:me.id,day:selDay(),score,note:(note||'').trim()||null},{onConflict:'user_id,day'});
+function saveMood(score,note){const d=selDay();return serial(()=>saveMood_(score,note,d))}
+async function saveMood_(score,note,day){
+  const {error}=await db.from('mood').upsert({user_id:me.id,day,score,note:(note||'').trim().slice(0,300)||null},{onConflict:'user_id,day'});
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
 }
@@ -433,7 +473,8 @@ function cheerCard(id){
   if(last)c.appendChild(mk('div','Последний клич: '+last.text+(last.seen?' · услышан':' · ещё не услышан'),'sub'));
   return c;
 }
-async function sendCheer(id,t){
+function sendCheer(id,t){return serial(()=>sendCheer_(id,t))}
+async function sendCheer_(id,t){
   const {error}=await db.from('cheers').insert({to_user:id,text:t});
   if(error){alert('Ошибка: '+error.message);return}
   await loadCheers();render();
@@ -483,7 +524,7 @@ function scanCard(){
   }
   const r=scan.res;
   c.appendChild(mk('div',(r.name||'Трапеза')+(r.grams?' · ~'+Math.round(r.grams)+' г':''),'mt'));
-  const mkField=(label,val)=>{const l=mk('label','','chk');l.appendChild(document.createTextNode(label+': '));const i=mk('input');i.inputMode='decimal';i.value=Math.round(Number(val)||0);i.style.width='100px';l.appendChild(i);c.appendChild(l);return i};
+  const mkField=(label,val)=>{const l=mk('label','','chk');l.appendChild(document.createTextNode(label+': '));const i=mk('input');i.inputMode='decimal';i.value=Math.max(0,Math.round(Number(val)||0));i.style.width='100px';l.appendChild(i);c.appendChild(l);return i};
   const kI=mkField('Ккал',r.kcal),pI=mkField('Белок, г',r.protein_g);
   c.appendChild(mk('div','Жиры ~'+Math.round(r.fat_g||0)+' г · Углеводы ~'+Math.round(r.carbs_g||0)+' г','sub'));
   if(r.note)c.appendChild(mk('div',r.note,'sub mt'));
@@ -516,11 +557,16 @@ function resizeImage(file){
   });
 }
 async function doScan(){
+  if(scan.busy)return;
   if(!scan.img&&!scan.text.trim()){scan.err='Добавь фото или описание';render();return}
   scan.busy=true;scan.err='';render();
   let data=null,msg='';
   try{
-    const r=await db.functions.invoke('food-scan',{body:{image:scan.img?scan.img.split(',')[1]:null,mime:'image/jpeg',text:scan.text.trim()}});
+    let timer;
+    const r=await Promise.race([
+      db.functions.invoke('food-scan',{body:{image:scan.img?scan.img.split(',')[1]:null,mime:'image/jpeg',text:scan.text.trim().slice(0,1000)}}),
+      new Promise((_,bad)=>{timer=setTimeout(()=>bad(new Error('алхимик не ответил за 60 секунд, попробуй ещё раз')),60000)})
+    ]).finally(()=>clearTimeout(timer));
     if(r.error){
       msg=r.error.message;
       try{const j=await r.error.context.json();if(j&&j.error)msg=j.error}catch(e){}
@@ -531,8 +577,10 @@ async function doScan(){
   if(msg||!data){scan.err='Ошибка: '+(msg||'пустой ответ');render();return}
   scan.res=data;render();
 }
-async function saveScan(k,p){
-  const list=[{kind:'kcal',value:k,day:selDay()},{kind:'protein_g',value:p,day:selDay()}].filter(x=>x.value>0);
+function saveScan(k,p){const d=selDay();return serial(()=>saveScan_(k,p,d))}
+async function saveScan_(k,p,day){
+  if(scan.busy)return;
+  const list=[{kind:'kcal',value:k,day},{kind:'protein_g',value:p,day}].filter(x=>x.value>0&&isFinite(x.value));
   if(!list.length){alert('Нечего записывать: обе цифры нулевые');return}
   scan.busy=true;render();
   const {error}=await db.from('entries').insert(list);
@@ -547,7 +595,9 @@ function startCard(){
   const b=mk('button','⚔ Начать испытание','big mt');b.onclick=startSeason;c.appendChild(b);
   return c;
 }
-async function startSeason(){
+function startSeason(){return serial(()=>startSeason_())}
+async function startSeason_(){
+  if(season){refresh();return}
   if(!confirm('Начать испытание? 90 дней пойдут с сегодняшнего дня для вас обоих.'))return;
   const {error}=await db.from('season').insert({id:1,start_day:today()});
   if(error&&!/duplicate/i.test(error.message)){alert('Ошибка: '+error.message);return}
@@ -611,15 +661,20 @@ function restCard(G,own){
   }
   return c;
 }
-async function addRest(d){
-  const G=calc(),cs=dayAdd(season,(G.curC-1)*CYCLE),ce=dayAdd(season,G.curC*CYCLE-1);
+function addRest(d){return serial(()=>addRest_(d))}
+async function addRest_(d){
+  const G=calcMemo(),cs=dayAdd(season,(G.curC-1)*CYCLE),ce=dayAdd(season,G.curC*CYCLE-1);
   if(d<today()||d<cs||d>ce){alert('Привал можно разбить только сегодня или в будущий день текущей главы');return}
-  if(rests.filter(x=>x.user_id===me.id&&x.day>=cs&&x.day<=ce).length>=REST){alert('В этой главе привалы закончились');return}
+  const {data:used,error:e1}=await db.from('cheat_days').select('day').eq('user_id',me.id).gte('day',cs).lte('day',ce);
+  if(e1){alert('Ошибка: '+e1.message);return}
+  if((used||[]).some(x=>x.day===d)){refresh();return}
+  if((used||[]).length>=REST){alert('В этой главе привалы закончились');return}
   const {error}=await db.from('cheat_days').insert({day:d});
   if(error&&!/duplicate/i.test(error.message)){alert('Ошибка: '+error.message);return}
   refresh();
 }
-async function delRest(d){
+function delRest(d){return serial(()=>delRest_(d))}
+async function delRest_(d){
   const {error}=await db.from('cheat_days').delete().eq('user_id',me.id).eq('day',d);
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
@@ -647,7 +702,7 @@ function settingsCard(){
   i.type='checkbox';i.checked=profiles[me.id].show_partner_strength!==false;
   i.onchange=async()=>{
     const {error}=await db.from('profiles').update({show_partner_strength:i.checked}).eq('user_id',me.id);
-    if(error){alert('Ошибка: '+error.message);return}
+    if(error){i.checked=!i.checked;alert('Ошибка: '+error.message);return}
     refresh();
   };
   l.append(i,'Показывать кузню: '+profiles[partner].name);
@@ -774,8 +829,8 @@ function renderStrength(box,own){
   });
   box.appendChild(c2);
 }
-async function markEx(i,name,on,wv){
-  const day=selDay();
+function markEx(i,name,on,wv){const d=selDay();return serial(()=>markEx_(i,name,on,wv,d))}
+async function markEx_(i,name,on,wv,day){
   let error;
   if(on){
     const w=parseFloat(String(wv||'').replace(',','.'));
@@ -786,16 +841,20 @@ async function markEx(i,name,on,wv){
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
 }
-async function add(k,v){
-  if(!(v>0)){alert('Введи число больше нуля');return}
-  const {error}=await db.from('entries').insert({kind:k,value:v,day:selDay()});
+function add(k,v){const d=selDay();return serial(()=>add_(k,v,d))}
+async function add_(k,v,day){
+  if(!(v>0)||!isFinite(v)){alert('Введи число больше нуля');return}
+  if(LIMITS[k]&&v>LIMITS[k]&&!confirm('Записать '+v+' за раз? Похоже на опечатку.'))return;
+  const {error}=await db.from('entries').insert({kind:k,value:v,day});
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
 }
-async function undo(k){
-  const mine=rows.filter(r=>r.user_id===me.id&&r.kind===k&&r.day===selDay());
-  if(!mine.length)return;
-  const {error}=await db.from('entries').delete().eq('id',mine[mine.length-1].id);
+function undo(k){const d=selDay();return serial(()=>undo_(k,d))}
+async function undo_(k,day){
+  const {data:last,error:e1}=await db.from('entries').select('id').eq('user_id',me.id).eq('kind',k).eq('day',day).order('id',{ascending:false}).limit(1);
+  if(e1){alert('Ошибка: '+e1.message);return}
+  if(!last||!last.length)return;
+  const {error}=await db.from('entries').delete().eq('id',last[0].id);
   if(error){alert('Ошибка: '+error.message);return}
   refresh();
 }
@@ -807,7 +866,8 @@ setInterval(async()=>{
   if(!me||document.hidden||scan.open)return;
   const before=cheers.filter(x=>x.to_user===me.id&&!x.seen).length;
   await loadCheers();
-  if(cheers.filter(x=>x.to_user===me.id&&!x.seen).length>before)render();
+  const typing=document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if(!typing&&cheers.filter(x=>x.to_user===me.id&&!x.seen).length>before)render();
 },60000);
 init();
 </script>
