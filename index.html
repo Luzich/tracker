@@ -53,6 +53,22 @@ input[type=checkbox]{width:auto;margin-right:8px;accent-color:#c9a24a}
 .center{text-align:center}
 .x{background:none;border:none;box-shadow:none;padding:2px 8px}
 .prev{display:block;max-width:100%;max-height:260px;border-radius:8px;margin:8px auto}
+.seg{display:inline-flex;border:1px solid #5a4632;border-radius:999px;overflow:hidden;background:#120e0b}
+.seg button{margin:0;padding:3px 10px;font-size:13px;border:none;border-radius:0;background:none;box-shadow:none;color:var(--dim)}
+.seg button.on{background:linear-gradient(#8e2a22,#5a1612);color:#fff}
+.dash-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 2px 10px}
+.dash-h .dash-t{margin:0;text-align:left}
+.yhint{font-size:13px;color:var(--gold2);margin:-4px 2px 8px}
+.panel.tap .ph{position:relative;padding-left:20px;padding-right:20px}
+.panel.tap .ph::after{content:'+';position:absolute;right:7px;top:50%;transform:translateY(-52%);font-size:17px;font-weight:700;opacity:.6}
+.throne{display:flex;align-items:center;justify-content:center;gap:6px}
+.throne svg{color:var(--gold2)}
+.moodrow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.restline{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.linkbtn{background:none;border:none;box-shadow:none;padding:4px 0;color:var(--gold2);font-size:14px;text-decoration:underline;text-underline-offset:3px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{margin:0}
+body.inapp>h1{display:none}
 .topbar{display:flex;justify-content:flex-end;gap:4px;margin:-4px 0 6px}
 .topbar button{padding:4px 10px;font-size:13px;margin:0}
 .heroes{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:10px;background:linear-gradient(#1c2620,#141a16);border:1px solid #3a4a3a;border-radius:8px;box-shadow:inset 0 0 0 3px #0a0d0b,0 6px 14px #0009}
@@ -191,10 +207,10 @@ const PROGRAM_RULES=[
 const progDayOf=d=>season?((dayDiff(season,d)%CYCLE)+CYCLE)%CYCLE+1:1;
 
 const M=[
- {k:'water_ml',t:'💧 Мана',u:'мл',quick:[250,500]},
- {k:'kcal',t:'❤ Жизненная сила',u:'ккал',quick:[]},
- {k:'protein_g',t:'🩸 Эссенция плоти',u:'г',quick:[]},
- {k:'km',t:'🥾 Странствие',u:'км',quick:[]}
+ {k:'water_ml',t:'Мана',u:'мл',quick:[250,500]},
+ {k:'kcal',t:'Жизненная сила',u:'ккал',quick:[]},
+ {k:'protein_g',t:'Эссенция плоти',u:'г',quick:[]},
+ {k:'km',t:'Странствие',u:'км',quick:[]}
 ];
 const GL={water_ml:'Мана',protein_g:'Эссенция плоти',km:'Странствие',food:'Трапеза в летописи'};
 const TITLES=[[30,'Легенда пепла'],[25,'Победитель тьмы'],[20,'Ветеран клинка'],[15,'Страж пустоши'],[10,'Следопыт'],[5,'Бродяга'],[1,'Изгнанник']];
@@ -204,7 +220,7 @@ const db=supabase.createClient(SB_URL,SB_KEY);
 let wl=[],progView=0,edDay='t',moods=[],cheers=[];
 const selDay=()=>edDay==='y'?dayAdd(today(),-1):today();
 const selLabel=()=>edDay==='y'?'вчера':'сегодня';
-const CHEERS=['⚔ Держи строй!','🔥 Твоё пламя не угаснет','🛡 Горжусь тобой, соратник','💧 Испей маны!','🏆 Слава герою'];
+const CHEERS=['Держи строй!','Твоё пламя не угаснет','Горжусь тобой, соратник','Испей маны!','Слава герою!'];
 let me=null,profiles={},viewId=null,rows=[],hist=[],rests=[],season=null,sub='sum',newCycle=0;
 let dataVer=0,calcCache=null,refreshSeq=0,seenMem=0,chain=Promise.resolve();
 // Все записи в базу идут строго по очереди: быстрые повторные нажатия не перемешиваются
@@ -476,18 +492,18 @@ function render(){
   if(!me)return;
   const G=season?calcMemo():null;
   if(!profiles[viewId])viewId=me.id;
-  if(!G&&(page==='scrolls'||page==='log'))page='camp';
+  if(!G&&page==='scrolls')page='camp';
   const forgeId=Object.keys(profiles).find(id=>planOf(id).train);
   const canForge=!!forgeId&&(forgeId===me.id||profiles[me.id].show_partner_strength!==false);
   if(page==='forge'&&!canForge)page='camp';
   const top=$('top');top.innerHTML='';
-  top.append(topBar(),heroes(G),dayBanner(G));
+  top.append(heroes(G),dayBanner(G));
   if(G&&G.R[viewId])top.appendChild(xpBlock(G,viewId));
   const box=$('cards');box.innerHTML='';
   const cb=cheerBanner();if(cb)box.appendChild(cb);
   if(page==='scrolls')renderQuests(box,G);
-  else if(page==='log')renderLog(box,G);
-  else if(page==='forge')renderStrength(box,forgeId===me.id,forgeId);
+  else if(page==='log'){if(G)renderLog(box,G);box.appendChild(settingsCard())}
+  else if(page==='forge'){if(forgeId===me.id){const t=mk('div','','dash-h');t.append(mk('div','Кузня','dash-t'),dayToggle());box.appendChild(t);if(edDay==='y')box.appendChild(mk('div','Отмечаешь вчерашнюю тренировку','yhint'))}renderStrength(box,forgeId===me.id,forgeId)}
   else if(page==='alch'){scan.open=true;box.appendChild(scanCard())}
   else renderCamp(box,G);
   renderNav(canForge,!!G);
@@ -514,8 +530,6 @@ function heroes(G){
     const r=G&&G.R[id];
     h.appendChild(mk('div',String(r?r.lvl:1),'badge'));
     h.appendChild(mk('div',pr.name,'name'));
-    if(r)h.appendChild(mk('div',r.title,'ttl'));
-    if(id===me.id)h.appendChild(mk('div','ты','me'));
     w.appendChild(h);
   });
   return w;
@@ -541,8 +555,7 @@ function xpBlock(G,id){
     w.appendChild(pips);
   }
   const info=mk('div','','xpinfo');
-  info.append(mk('span','Ур. '+r.lvl+' · '+r.xp+' XP'+(r.lvl<MAXLVL?' · до '+(r.lvl+1)+'-го: '+(r.hi-r.xp):'')),
-    mk('span',G.over?'Испытание завершено':'Глава '+G.curC+' · день '+(G.curDay-(G.curC-1)*CYCLE)+'/'+CYCLE));
+  info.append(mk('span',r.title+', '+r.lvl+' уровень'),mk('span',r.lvl<MAXLVL?r.xp+' / '+r.hi+' XP':r.xp+' XP'));
   w.appendChild(info);
   return w;
 }
@@ -552,7 +565,7 @@ function renderNav(canForge,started){
     if(k==='forge'&&!canForge)return;
     const b=mk('button','',page===k?'on':'');
     b.innerHTML=svgI(ic);b.appendChild(mk('span',label));
-    if((k==='scrolls'||k==='log')&&!started)b.disabled=true;
+    if(k==='scrolls'&&!started)b.disabled=true;
     b.onclick=()=>go(k);n.appendChild(b);
   });
 }
@@ -580,10 +593,20 @@ function arch(fr,label){
   d.appendChild(mk('div',label,'pv arch-v'));
   return d;
 }
+function cheerSheet(host){
+  if(viewId===me.id){sheet=null;return}
+  const id=viewId,ov=mk('div','','overlay');ov.onclick=e=>{if(e.target===ov){sheet=null;render()}};
+  const sh=mk('div','','sheet');sh.setAttribute('role','dialog');
+  const h=mk('div','','row'),x=mk('button','✕','x');x.setAttribute('aria-label','Закрыть');x.onclick=()=>{sheet=null;render()};
+  h.append(mk('b','Боевой клич: '+profiles[id].name),x);sh.appendChild(h);
+  CHEERS.forEach(t=>{const b=mk('button',t);b.style.width='100%';b.onclick=()=>{sheet=null;sendCheer(id,t);render()};sh.appendChild(b)});
+  ov.appendChild(sh);host.appendChild(ov);
+}
 function openSheet(k){if(viewId!==me.id)return;sheet=k;render()}
 function dashboard(own){
   const p=planOf(viewId),f=mk('div','','dash');
-  f.appendChild(mk('div','Дашборд выживания','dash-t'));
+  const hd=mk('div','','dash-h');hd.append(mk('div','Дашборд выживания','dash-t'),dayToggle());f.appendChild(hd);
+  if(edDay==='y'&&own)f.appendChild(mk('div','Правишь вчерашний день: записи уйдут во вчера','yhint'));
   const g=mk('div','','grid2');
   const kc=sum(viewId,'kcal'),pr=sum(viewId,'protein_g'),pg=p.protein_g||0;
   const red=panel('red','Жизненная сила',own?()=>openSheet('kcal'):null);
@@ -599,7 +622,7 @@ function dashboard(own){
   const blue=panel('blue','Мана',own?()=>openSheet('water_ml'):null);
   blue.appendChild(orb('blue',wg?wa/wg:0,wg&&wa>=wg));
   blue.appendChild(mk('div',lit(wa)+(wg?' / '+lit(wg):'')+' л','pv'));
-  const th=mk('button','🚽 Трон: '+sum(viewId,'toilet'),'throne');
+  const th=mk('button','','throne');th.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M4 18h16M5 18l-1-10 5 4 3-6 3 6 5-4-1 10"/></svg>';th.appendChild(mk('span','Трон: '+sum(viewId,'toilet')));
   if(own)th.onclick=e=>{e.stopPropagation();openSheet('toilet')};else th.disabled=true;
   blue.appendChild(th);
   g.append(red,blue);f.appendChild(g);
@@ -607,14 +630,13 @@ function dashboard(own){
   const gr=panel('green','Странствие',own?()=>openSheet('km'):null);
   gr.appendChild(arch(kg?km/kg:0,num(km)+(kg?' / '+num(kg):'')+' км'));
   f.appendChild(gr);
-  if(own)f.appendChild(mk('div','Коснись показателя, чтобы пополнить его','sub center mt'));
   return f;
 }
 function deedsCard(G,id){
   const r=G.R[id];if(!r||G.over)return null;
   const d=r.D[today()];if(!d)return null;
   const c=mk('div','','card'),per=Math.round(60/r.n);
-  const h=mk('div','','row');h.append(mk('b','⚔ Подвиги дня'),mk('span',d.done+' / '+r.n,'sub'));c.appendChild(h);
+  const h=mk('div','','row');h.append(mk('b','Подвиги дня'),mk('span',d.done+' / '+r.n,'sub'));c.appendChild(h);
   if(d.rest)c.appendChild(mk('div','Сегодня привал: цепь не прервётся','sub ok mt'));
   const line=(done,txt,xp)=>{const row=mk('div','','deed'+(done?' done':''));row.append(mk('span',(done?'◆ ':'◇ ')+txt),mk('span',xp,'sub'));c.appendChild(row)};
   r.G.forEach(k=>line(d.m[k],GL[k],'+'+per+' XP'));
@@ -626,19 +648,18 @@ function deedsCard(G,id){
 function renderCamp(box,G){
   const own=viewId===me.id;
   if(!G)box.appendChild(startCard());
-  box.appendChild(dayToggle());
   box.appendChild(dashboard(own));
   if(G){const dc=deedsCard(G,viewId);if(dc)box.appendChild(dc)}
   if(!own){const cc=cheerCard(viewId);if(cc)box.appendChild(cc)}
   box.appendChild(moodCard(own));
-  box.appendChild(moodChart());
   if(G&&!G.over){const rc=restCard(G,own);if(rc)box.appendChild(rc)}
-  const sc=settingsCard();if(sc)box.appendChild(sc);
 }
-const SHEETS={water_ml:{t:'💧 Мана',u:'мл',quick:[250,500,750]},kcal:{t:'❤ Жизненная сила',u:'ккал',quick:[]},protein_g:{t:'🩸 Эссенция плоти',u:'г',quick:[]},km:{t:'🥾 Странствие',u:'км',quick:[1,2,5]},toilet:{t:'🚽 Трон',u:'раз',quick:[1]}};
+const SHEETS={water_ml:{t:'Мана',u:'мл',quick:[250,500,750]},kcal:{t:'Жизненная сила',u:'ккал',quick:[]},protein_g:{t:'Эссенция плоти',u:'г',quick:[]},km:{t:'Странствие',u:'км',quick:[1,2,5]},toilet:{t:'Трон',u:'раз',quick:[1]}};
 function renderSheet(){
   const host=$('sheetbox');host.innerHTML='';
-  if(!sheet||viewId!==me.id||page!=='camp')return;
+  if(!sheet||page!=='camp')return;
+  if(sheet==='cheer'){cheerSheet(host);return}
+  if(viewId!==me.id)return;
   const key=sheet,S=SHEETS[key],p=planOf(me.id);
   const ov=mk('div','','overlay');ov.onclick=e=>{if(e.target===ov){sheet=null;render()}};
   const sh=mk('div','','sheet');sh.setAttribute('role','dialog');
@@ -657,44 +678,37 @@ function renderSheet(){
   }
   sh.appendChild(ctl);
   const u=mk('button','↩ Отменить последнее','ghost mt');u.onclick=()=>undo(key);sh.appendChild(u);
-  if(key==='kcal'||key==='protein_g'){const a=mk('button','🔮 Изучить трапезу оком алхимика','mt');a.style.width='100%';a.onclick=()=>go('alch');sh.appendChild(a)}
+  if(key==='kcal'||key==='protein_g'){const a=mk('button','Изучить трапезу оком алхимика','mt');a.style.width='100%';a.onclick=()=>go('alch');sh.appendChild(a)}
   ov.appendChild(sh);host.appendChild(ov);
 }
 // ===================== Вчера/сегодня, настроение, подбадривания =====================
 function dayToggle(){
-  const b=mk('div','','tabs');
-  [['t','Сегодня'],['y','Вчера, '+fmt(dayAdd(today(),-1))]].forEach(([k,n])=>{
-    const x=mk('button',n,edDay===k?'tab on':'tab');
-    x.onclick=()=>{edDay=k;progView=0;render()};b.appendChild(x);
+  const b=mk('div','','seg');
+  [['t','сегодня'],['y','вчера']].forEach(([k,n])=>{
+    const x=mk('button',n,edDay===k?'on':'');
+    x.onclick=()=>{edDay=k;progView=0;sheet=null;render()};b.appendChild(x);
   });
-  if(edDay==='y'&&viewId===me.id){
-    const w=mk('div');w.appendChild(b);
-    w.appendChild(mk('div','Ты правишь вчерашнюю страницу летописи: всё, что добавишь или отменишь, запишется во вчера','sub gold'));
-    return w;
-  }
   return b;
 }
 function moodCard(own){
   const d=selDay(),m=moods.find(x=>x.user_id===viewId&&x.day===d);
-  const c=mk('div','','card'),h=mk('div','','row');
-  h.append(mk('b','🕯 Состояние духа · '+selLabel()),mk('span',m?m.score+' / 10':'не отмечено'));
+  const c=mk('div','','card'),h=mk('div','','moodrow');
+  h.append(mk('b','Состояние духа'),mk('span',m?m.score+' из 10':(own?'':'не отмечено'),'sub'));
   c.appendChild(h);
   if(own){
     const row=mk('div','','nums mt');
-    let note;
     for(let i=1;i<=10;i++){
       const b=mk('button',String(i),m&&m.score===i?'tab on':'tab');
-      
-      b.onclick=()=>saveMood(i,note.value);row.appendChild(b);
+      b.setAttribute('aria-label','Оценка '+i);
+      b.onclick=()=>saveMood(i,m&&m.note?m.note:'');row.appendChild(b);
     }
     c.appendChild(row);
-    c.appendChild(mk('div','1: тьма поглотила · 10: дух непоколебим','sub'));
-    note=mk('input');note.type='text';note.placeholder='Пара слов о прожитом дне (по желанию)';note.value=m&&m.note?m.note:'';note.className='mt';
-    c.appendChild(note);
-    const sv=mk('button','Вписать в летопись');
-    sv.onclick=()=>{if(!m){alert('Сначала выбери оценку от 1 до 10');return}saveMood(m.score,note.value)};
-    c.appendChild(sv);
-    c.appendChild(mk('div','Опыта не даёт, чтобы оценка была честной. Соратник видит оценку и запись.','sub'));
+    if(m){
+      const ctl=mk('div','','ctl mt');
+      const note=mk('input');note.type='text';note.placeholder='Пара слов о дне';note.value=m.note||'';
+      const sv=mk('button','Сохранить');sv.onclick=()=>saveMood(m.score,note.value);
+      ctl.append(note,sv);c.appendChild(ctl);
+    }else c.appendChild(mk('div','1 — тьма поглотила, 10 — дух непоколебим','sub mt'));
   }else if(m&&m.note){
     c.appendChild(mk('div','«'+m.note+'»','sub mt'));
   }
@@ -711,7 +725,7 @@ function moodChart(){
   const N=14,td=today(),days=[];
   for(let i=N-1;i>=0;i--)days.push(dayAdd(td,-i));
   const c=mk('div','','card');
-  c.appendChild(mk('b','🕯 Состояние духа за 2 недели'));
+  c.appendChild(mk('b','Состояние духа за две недели'));
   if(!moods.some(m=>m.day>=days[0])){c.appendChild(mk('div','Здесь проступит график, когда начнёте отмечать состояние духа','sub mt'));return c}
   const W=320,H=150,L=22,R=8,T=10,B=22,cols=['#d4a84b','#5b9bf0'];
   const X=i=>L+(W-L-R)*i/(N-1),Y=v=>T+(H-T-B)*(10-v)/9;
@@ -733,13 +747,12 @@ function moodChart(){
   return c;
 }
 function cheerCard(id){
-  const c=mk('div','','card');
-  c.appendChild(mk('b','📯 Боевой клич для: '+profiles[id].name));
-  const row=mk('div','','ctl mt');
-  CHEERS.forEach(t=>{const b=mk('button',t);b.onclick=()=>sendCheer(id,t);row.appendChild(b)});
-  c.appendChild(row);
+  const c=mk('div','','card'),r=mk('div','','restline');
   const last=cheers.find(x=>x.from_user===me.id&&x.to_user===id);
-  if(last)c.appendChild(mk('div','Последний клич: '+last.text+(last.seen?' · услышан':' · ещё не услышан'),'sub'));
+  const left=mk('div');left.appendChild(mk('b','Боевой клич'));
+  left.appendChild(mk('div',last?'Последний: '+last.text+(last.seen?', услышан':', ещё не услышан'):'Подбодри соратника','sub'));
+  const b=mk('button','Крикнуть');b.onclick=()=>{sheet='cheer';render()};
+  r.append(left,b);c.appendChild(r);
   return c;
 }
 function sendCheer(id,t){return serial(()=>sendCheer_(id,t))}
@@ -754,7 +767,7 @@ function cheerBanner(){
   if(!un.length)return null;
   const c=mk('div','','card banner');
   un.slice(0,5).forEach(x=>{const n=profiles[x.from_user]?profiles[x.from_user].name:'Партнёр';c.appendChild(mk('div',n+': '+x.text,'gold'))});
-  const b=mk('button','Благодарю, соратник ❤','mt');
+  const b=mk('button','Благодарю, соратник','mt');
   b.onclick=async()=>{
     const {error}=await db.from('cheers').update({seen:true}).eq('to_user',me.id).eq('seen',false);
     if(error){alert('Ошибка: '+error.message);return}
@@ -768,14 +781,14 @@ function scanReset(){scan={open:false,img:null,text:'',busy:false,res:null,err:'
 function scanCard(){
   const c=mk('div','','card');
   if(!scan.open){
-    const b=mk('button','🔮 Око алхимика: изучить трапезу по фото и описанию');b.style.width='100%';
+    const b=mk('button','Открыть око алхимика');b.style.width='100%';
     b.onclick=()=>{scan.open=true;render()};c.appendChild(b);return c;
   }
   const h=mk('div','','row'),x=mk('button','✕','x');
   x.onclick=()=>{scanReset();render()};
-  h.append(mk('b','🔮 Око алхимика'),x);c.appendChild(h);
+  h.append(mk('b','Око алхимика'),x);c.appendChild(h);
   if(!scan.res){
-    const lab=mk('label',scan.img?'📷 Заменить фото':'📷 Сделать или выбрать фото','filebtn');
+    const lab=mk('label',scan.img?'Заменить фото':'Сделать или выбрать фото','filebtn');
     const f=mk('input');f.type='file';f.accept='image/*';lab.appendChild(f);
     f.onchange=async()=>{
       const file=f.files&&f.files[0];if(!file)return;
@@ -874,30 +887,37 @@ async function startSeason_(){
   if(error&&!/duplicate/i.test(error.message)){alert('Ошибка: '+error.message);return}
   viewId=me.id;refresh();
 }
+let restPlan=false;
 function restCard(G,own){
   if(!G.R[viewId])return null;
   const td=today(),cs=dayAdd(season,(G.curC-1)*CYCLE),ce=dayAdd(season,G.curC*CYCLE-1);
   const mine=rests.filter(x=>x.user_id===viewId&&x.day>=cs&&x.day<=ce).map(x=>x.day).sort();
-  const c=mk('div','','card'),h=mk('div','','row');
-  h.append(mk('b','🔥 Привал у костра'),mk('span',mine.length+' / '+REST));
-  c.appendChild(h);
-  c.appendChild(mk('div','День у костра без давления клятвы: цепь не прерывается, а в итогах главы этот день не учитывается. С новой главой привалы восполняются.','sub'));
-  mine.forEach(d=>{
-    const row=mk('div','','row mt');
-    row.appendChild(mk('span',(d===td?'Сегодня, ':'')+fmt(d)));
-    if(own&&d>=td){const x=mk('button','✕','x');x.title='Отменить';x.onclick=()=>delRest(d);row.appendChild(x)}
-    c.appendChild(row);
-  });
-  if(own&&mine.length<REST){
-    if(!mine.includes(td)){const b=mk('button','Разбить привал сегодня','mt');b.onclick=()=>addRest(td);c.appendChild(b)}
-    if(td<ce){
+  const c=mk('div','','card'),r=mk('div','','restline');
+  const left=mk('div');left.appendChild(mk('b','Привал у костра'));
+  left.appendChild(mk('div','Осталось '+(REST-mine.length)+' из '+REST+' в этой главе','sub'));
+  r.appendChild(left);
+  if(own&&mine.length<REST&&!mine.includes(td)){const b=mk('button','Сегодня');b.onclick=()=>addRest(td);r.appendChild(b)}
+  c.appendChild(r);
+  if(mine.length){
+    const ch=mk('div','','chips mt');
+    mine.forEach(d=>{
+      const x=mk('button',(d===td?'сегодня ':'')+fmt(d)+(own&&d>=td?'  ✕':''),'ghost');
+      if(own&&d>=td){x.title='Отменить привал';x.onclick=()=>delRest(d)}else x.disabled=true;
+      ch.appendChild(x);
+    });
+    c.appendChild(ch);
+  }
+  if(own&&mine.length<REST&&td<ce){
+    if(!restPlan){const l=mk('button','Запланировать на другой день','linkbtn');l.onclick=()=>{restPlan=true;render()};c.appendChild(l)}
+    else{
       const ctl=mk('div','','ctl mt');
       const inp=mk('input');inp.type='date';inp.min=dayAdd(td,1);inp.max=ce;
       const b=mk('button','Запланировать');
-      b.onclick=()=>{if(!inp.value){alert('Выбери дату');return}addRest(inp.value)};
+      b.onclick=()=>{if(!inp.value){alert('Выбери дату');return}restPlan=false;addRest(inp.value)};
       ctl.append(inp,b);c.appendChild(ctl);
     }
   }
+  c.appendChild(mk('div','В день привала цепь не рвётся, а итоги главы его не учитывают.','sub mt'));
   return c;
 }
 function addRest(d){return serial(()=>addRest_(d))}
@@ -919,20 +939,24 @@ async function delRest_(d){
   refresh();
 }
 function settingsCard(){
-  if(viewId!==me.id||planOf(me.id).train)return null;
-  const partner=Object.keys(profiles).find(id=>id!==me.id&&planOf(id).train);
-  if(!partner)return null;
   const c=mk('div','','card');
-  c.appendChild(mk('b','⚙ Настройки'));
-  const l=mk('label','','chk'),i=mk('input');
-  i.type='checkbox';i.checked=profiles[me.id].show_partner_strength!==false;
-  i.onchange=async()=>{
-    const {error}=await db.from('profiles').update({show_partner_strength:i.checked}).eq('user_id',me.id);
-    if(error){i.checked=!i.checked;alert('Ошибка: '+error.message);return}
-    refresh();
-  };
-  l.append(i,'Показывать кузню: '+profiles[partner].name);
-  c.appendChild(l);
+  c.appendChild(mk('b','Лагерь'));
+  const l1=mk('label','','chk'),s1=mk('input');s1.type='checkbox';s1.checked=soundOn;
+  s1.onchange=()=>{soundOn=s1.checked;try{localStorage.setItem('sound',soundOn?'on':'off')}catch(e){}if(soundOn)sfx('add')};
+  l1.append(s1,'Звуки');c.appendChild(l1);
+  const partner=Object.keys(profiles).find(id=>id!==me.id&&planOf(id).train);
+  if(partner&&!planOf(me.id).train){
+    const l=mk('label','','chk'),i=mk('input');
+    i.type='checkbox';i.checked=profiles[me.id].show_partner_strength!==false;
+    i.onchange=async()=>{
+      const {error}=await db.from('profiles').update({show_partner_strength:i.checked}).eq('user_id',me.id);
+      if(error){i.checked=!i.checked;alert('Ошибка: '+error.message);return}
+      refresh();
+    };
+    l.append(i,'Показывать кузню: '+profiles[partner].name);
+    c.appendChild(l);
+  }
+  const o=mk('button','Покинуть лагерь','ghost mt');o.onclick=logout;c.appendChild(o);
   return c;
 }
 function questCard(q){
@@ -945,14 +969,15 @@ function questCard(q){
 }
 function renderQuests(box,G){
   if(!G.two){box.appendChild(mk('div','Свитки откроются, когда в хрониках будут оба героя','sub'));return}
-  box.appendChild(mk('b','📜 Свитки испытания','gold'));
+  box.appendChild(mk('b','Свитки испытания','gold'));
   G.S.forEach(q=>box.appendChild(questCard(q)));
   const cur=G.C[G.C.length-1];
-  box.appendChild(mk('b','📜 Свитки главы '+cur.c+(cur.ended?' (завершена)':''),'gold'));
+  box.appendChild(mk('b','Свитки главы '+cur.c+(cur.ended?' (завершена)':''),'gold'));
   cur.Q.forEach(q=>box.appendChild(questCard(q)));
   box.appendChild(mk('div','День в хрониках идёт с 12:00 до 12:00. Подвиги дня: мана, эссенция плоти, странствие и трапеза в летописи, каждый +15 XP, за все сразу ещё +20. Ратный труд в кузне: до +30 XP, пропорционально выполненным упражнениям дня. Достойный день: выполнены все подвиги или все кроме одного, либо привал. В конце главы награда до 150 XP за верность клятве и благословение союза +100 каждому, если оба держали клятву на 70%+. Высший уровень: '+MAXLVL+'.','sub mt'));
 }
 function renderLog(box,G){
+  box.appendChild(moodChart());
   if(newCycle){
     const b=mk('div','','card banner');
     b.appendChild(mk('b','Глава '+newCycle+' завершена! Итоги ниже.','gold'));
@@ -1036,13 +1061,13 @@ function renderStrength(box,own,uid){
   if(isToday&&P.ex.length)c.appendChild(mk('div','Выковано: '+Math.min(mine.length,P.ex.length)+' из '+P.ex.length+(own?'. Вписывай вес, если упражнение с гантелями: кузня его запомнит.':''),'sub mt'));
   box.appendChild(c);
   const rc=mk('div','','card');
-  rc.appendChild(mk('b','📖 Устав кузни'));
+  rc.appendChild(mk('b','Устав кузни'));
   PROGRAM_RULES.forEach(t=>rc.appendChild(mk('div','· '+t,'sub mt')));
   box.appendChild(rc);
   const g={};
   wl.filter(x=>x.user_id===uid&&Number(x.weight)>0).forEach(x=>{(g[x.exercise]=g[x.exercise]||[]).push(x)});
   const c2=mk('div','','card');
-  c2.appendChild(mk('b','⚒ Тяжесть железа'));
+  c2.appendChild(mk('b','Тяжесть железа'));
   if(!Object.keys(g).length)c2.appendChild(mk('div','Здесь появятся веса, когда начнёшь их вписывать','sub mt'));
   Object.keys(g).sort().forEach(n=>{
     const a=g[n],last=a[a.length-1],prev=a[a.length-2];
