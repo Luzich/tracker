@@ -46,7 +46,7 @@ input[type=checkbox]{width:auto;margin-right:8px}
 
 <section id="login">
   <input id="email" type="email" placeholder="Почта странника" autocomplete="username">
-  <input id="pass" type="password" placeholder="Тайное слово (пароль)" autocomplete="current-password">
+  <input id="pass" type="password" placeholder="Тайное слово" autocomplete="current-password">
   <button onclick="login()">Войти в лагерь</button>
   <div class="err" id="err"></div>
 </section>
@@ -103,10 +103,10 @@ const PROGRAM_RULES=[
 const progDayOf=d=>season?((dayDiff(season,d)%CYCLE)+CYCLE)%CYCLE+1:1;
 
 const M=[
- {k:'water_ml',t:'💧 Мана · вода',u:'мл',quick:[250,500]},
- {k:'kcal',t:'❤ Жизненная сила · ккал',u:'ккал',quick:[]},
- {k:'protein_g',t:'🩸 Эссенция плоти · белок',u:'г',quick:[]},
- {k:'km',t:'🥾 Странствие · км',u:'км',quick:[]}
+ {k:'water_ml',t:'💧 Мана',u:'мл',quick:[250,500]},
+ {k:'kcal',t:'❤ Жизненная сила',u:'ккал',quick:[]},
+ {k:'protein_g',t:'🩸 Эссенция плоти',u:'г',quick:[]},
+ {k:'km',t:'🥾 Странствие',u:'км',quick:[]}
 ];
 const GL={water_ml:'Мана',protein_g:'Эссенция плоти',km:'Странствие',food:'Трапеза в летописи'};
 const TITLES=[[30,'Легенда пепла'],[25,'Победитель тьмы'],[20,'Ветеран клинка'],[15,'Страж пустоши'],[10,'Следопыт'],[5,'Бродяга'],[1,'Изгнанник']];
@@ -590,7 +590,7 @@ function restCard(G,own){
   const td=today(),cs=dayAdd(season,(G.curC-1)*CYCLE),ce=dayAdd(season,G.curC*CYCLE-1);
   const mine=rests.filter(x=>x.user_id===viewId&&x.day>=cs&&x.day<=ce).map(x=>x.day).sort();
   const c=mk('div','','card'),h=mk('div','','row');
-  h.append(mk('b','🔥 Привал у костра (читмил)'),mk('span',mine.length+' / '+REST));
+  h.append(mk('b','🔥 Привал у костра'),mk('span',mine.length+' / '+REST));
   c.appendChild(h);
   c.appendChild(mk('div','День у костра без давления клятвы: цепь не прерывается, а в итогах главы этот день не учитывается. С новой главой привалы восполняются.','sub'));
   mine.forEach(d=>{
@@ -669,7 +669,7 @@ function renderQuests(box,G){
   const cur=G.C[G.C.length-1];
   box.appendChild(mk('b','📜 Свитки главы '+cur.c+(cur.ended?' (завершена)':''),'gold'));
   cur.Q.forEach(q=>box.appendChild(questCard(q)));
-  box.appendChild(mk('div','День в хрониках идёт с 12:00 до 12:00. Подвиги дня: мана (вода), эссенция плоти (белок), странствие (км) и трапеза в летописи, каждый +15 XP, за все сразу ещё +20. Ратный труд в кузне: до +30 XP, пропорционально выполненным упражнениям дня. Достойный день: выполнены все подвиги или все кроме одного, либо привал. В конце главы награда до 150 XP за верность клятве и благословение союза +100 каждому, если оба держали клятву на 70%+. Высший уровень: '+MAXLVL+'.','sub mt'));
+  box.appendChild(mk('div','День в хрониках идёт с 12:00 до 12:00. Подвиги дня: мана, эссенция плоти, странствие и трапеза в летописи, каждый +15 XP, за все сразу ещё +20. Ратный труд в кузне: до +30 XP, пропорционально выполненным упражнениям дня. Достойный день: выполнены все подвиги или все кроме одного, либо привал. В конце главы награда до 150 XP за верность клятве и благословение союза +100 каждому, если оба держали клятву на 70%+. Высший уровень: '+MAXLVL+'.','sub mt'));
 }
 function renderLog(box,G){
   if(newCycle){
