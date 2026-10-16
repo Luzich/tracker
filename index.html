@@ -543,7 +543,10 @@ const heroOrder=()=>Object.keys(profiles).sort((a,b)=>(planOf(b).train?1:0)-(pla
 // ----- звуки (синтез прямо в браузере, без файлов) -----
 let AC=null,soundOn=true;
 try{soundOn=localStorage.getItem('sound')!=='off'}catch(e){}
-function ac(){try{if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AC=new C()}if(AC.state==='suspended')AC.resume();return AC}catch(e){return null}}
+function ctx(){try{if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;AC=new C()}return AC}catch(e){return null}}
+function ac(){const a=ctx();try{if(a&&a.state!=='running')a.resume()}catch(e){}return a}
+// Телефоны разрешают звук только после касания: при любом касании «будим» звук
+['touchend','click','keydown'].forEach(ev=>document.addEventListener(ev,()=>ac(),{passive:true,capture:true}));
 function tone(f,t0,dur,type,vol,f2){const a=ac();if(!a)return;const t=a.currentTime+t0,o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+dur);g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol||0.12,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+dur+0.05)}
 const SFX={
  drop:()=>{tone(1100,0,.16,'sine',.18,320);tone(700,.05,.12,'sine',.06,250)},
@@ -553,26 +556,48 @@ const SFX={
  quest:()=>[659,880,1175].forEach((f,i)=>tone(f,i*.1,.45,'sine',.12)),
  chapter:()=>{tone(98,0,1.8,'sine',.22);tone(196,0,1.4,'triangle',.07);tone(294,.06,1.1,'sine',.05)},
  cheer:()=>[330,440,554].forEach((f,i)=>tone(f,i*.09,.25,'sawtooth',.04)),
+ protein:()=>{tone(260,0,.18,'triangle',.12,180);tone(520,.03,.12,'sine',.05,400)},
+ click:()=>tone(900,0,.04,'square',.03,600),
  charge:()=>{tone(55,0,1.8,'sawtooth',.07,170);tone(110,0,1.8,'triangle',.05,330);tone(320,.4,1.4,'sine',.035,1700);noise(0,1.8,.05,300,true)},
  ascend:()=>{tone(80,0,1.4,'sine',.32,38);noise(0,.5,.16,2500);[1319,1568,1976,2637,3136,2637,3520].forEach((f,i)=>tone(f,.04+i*.055,.9,'sine',.05));[523,659,784,1047].forEach(f=>tone(f,.08,2.2,'triangle',.06))}
 };
 function noise(t0,dur,vol,hp,rise){const a=ac();if(!a)return;const n=Math.floor(a.sampleRate*dur),b=a.createBuffer(1,n,a.sampleRate),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=Math.random()*2-1;const src=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain(),t=a.currentTime+t0;src.buffer=b;f.type='highpass';f.frequency.value=hp||1000;if(rise){g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+dur*.95);g.gain.exponentialRampToValueAtTime(0.0001,t+dur)}else{g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur)}src.connect(f);f.connect(g);g.connect(a.destination);src.start(t);src.stop(t+dur+.05)}
 // Если положить в папку sounds репозитория файлы с этими именами, вместо синтеза заиграют они
-const SOUND_FILES={drop:[1,2,3,4,5,6].map(n=>'sounds/drop-'+n+'.mp3'),add:'sounds/add.mp3',forge:'sounds/forge.mp3',level:'sounds/level.mp3',quest:'sounds/quest.mp3',chapter:'sounds/chapter.mp3',cheer:'sounds/cheer.mp3',charge:'sounds/charge.mp3',ascend:'sounds/ascend.mp3'};
-// Звук может иметь несколько вариантов: каждый раз играет случайный, но не тот же, что в прошлый раз
-const soundReady={},soundLast={};
-try{Object.entries(SOUND_FILES).forEach(([k,list])=>{[].concat(list).forEach(u=>{const a=new Audio();a.preload='auto';a.addEventListener('canplaythrough',()=>{(soundReady[k]=soundReady[k]||[]).push(a)},{once:true});a.addEventListener('error',()=>{},{once:true});a.src=u})})}catch(e){}
+const SOUND_FILES={
+ drop:[1,2,3,4,5,6].map(n=>'sounds/drop-'+n+'.mp3'),
+ protein:[1,2,3,4,5,6,7].map(n=>'sounds/protein-'+n+'.mp3'),
+ add:'sounds/click.mp3',click:'sounds/click.mp3',forge:'sounds/forge.mp3',
+ level:'sounds/level.mp3',quest:'sounds/quest.mp3',chapter:'sounds/chapter.mp3',cheer:'sounds/cheer.mp3',charge:'sounds/charge.mp3',ascend:'sounds/ascend.mp3'};
+// Звуки заранее раскладываются в память (Web Audio): играют мгновенно и не блокируются телефоном после загрузки данных.
+// У звука может быть несколько вариантов: каждый раз играет случайный, но не тот же, что в прошлый раз.
+const soundBuf={},soundLast={};
+function decode(a,ab){return new Promise((ok,bad)=>{try{const p=a.decodeAudioData(ab,ok,bad);if(p&&p.then)p.then(ok,bad)}catch(e){bad(e)}})}
+(function loadSounds(){
+  const a=ctx();if(!a||!window.fetch)return;
+  const cache={};
+  Object.entries(SOUND_FILES).forEach(([k,list])=>{[].concat(list).forEach(u=>{
+    const job=cache[u]||(cache[u]=fetch(u).then(r=>r.ok?r.arrayBuffer():null).then(ab=>ab?decode(a,ab):null).catch(()=>null));
+    job.then(buf=>{if(buf)(soundBuf[k]=soundBuf[k]||[]).push(buf)});
+  })});
+})();
+function playBuf(buf,vol){const a=ac();if(!a)return false;const src=a.createBufferSource(),g=a.createGain();src.buffer=buf;g.gain.value=vol;src.connect(g);g.connect(a.destination);src.start();return true}
 function sfx(n){
   if(!soundOn)return;
-  const v=soundReady[n];
+  const v=soundBuf[n];
   if(v&&v.length){
     let i=Math.floor(Math.random()*v.length);
     if(v.length>1&&i===soundLast[n])i=(i+1)%v.length;
     soundLast[n]=i;
-    try{const c=v[i].cloneNode();c.volume=0.8;const pr=c.play();if(pr&&pr.catch)pr.catch(()=>{if(SFX[n])try{SFX[n]()}catch(e){}});return}catch(e){}
+    try{if(playBuf(v[i],n==='click'?0.55:0.85))return}catch(e){}
   }
   if(SFX[n])try{SFX[n]()}catch(e){}
 }
+// Звук для всех остальных кнопок. Кнопки добавления в шторке звучат своим звуком после записи.
+document.addEventListener('click',e=>{
+  const t=e.target.closest&&e.target.closest('button,.panel.tap,.hero,#nav button');
+  if(!t||t.disabled||t.closest('.asc')||t.closest('.sheet .ctl'))return;
+  sfx('click');
+},true);
 function toast(msg){const t=mk('div',msg,'toast');document.body.appendChild(t);setTimeout(()=>t.classList.add('show'),20);setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),400)},3000)}
 function progressCheck(){
   if(!season||!me)return;
@@ -1036,7 +1061,7 @@ async function saveScan_(k,p,day){
   const {error}=await db.from('entries').insert(list);
   scan.busy=false;
   if(error){scan.err='Ошибка: '+error.message;render();return}
-  scanReset();refresh();
+  sfx('protein');scanReset();refresh();
 }
 function startCard(){
   const c=mk('div','','card head');
@@ -1266,7 +1291,7 @@ async function add_(k,v,day){
   if(LIMITS[k]&&v>LIMITS[k]&&!confirm('Записать '+v+' за раз? Похоже на опечатку.'))return;
   const {error}=await db.from('entries').insert({kind:k,value:v,day});
   if(error){alert('Ошибка: '+error.message);return}
-  sfx(k==='water_ml'?'drop':'add');
+  sfx(k==='water_ml'?'drop':k==='protein_g'?'protein':'add');
   refresh();
 }
 function undo(k){const d=selDay();return serial(()=>undo_(k,d))}
