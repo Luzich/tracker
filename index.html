@@ -484,6 +484,8 @@ const TIER_LVL=[1,10,20,30];
 const tierOf=L=>TIER_LVL.filter(t=>L>=t).length||1;
 const portraitSrcs=(base,tier)=>{const a=[];for(let t=tier;t>=1;t--)a.push('img/'+base+'-'+t+'.jpg');return a};
 let tierMem={};
+// Предпросмотр облика: ссылка с ?lvl=30 показывает рамки и портреты нужного уровня. Данные и опыт не меняются.
+const PREVIEW_LVL=(()=>{try{const v=parseInt(new URLSearchParams(location.search).get('lvl'),10);return v>=1&&v<=MAXLVL?v:0}catch(e){return 0}})();
 const GLYPH={
  knight:'<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#cdb88a"/><path d="M10 60c3-8 11-12 22-12s19 4 22 12z" fill="#3a2a1a"/><path d="M17 36c0-13 7-23 15-23s15 10 15 23v12H38V39H26v9h-9z" fill="#2a1d12"/><rect x="22" y="31" width="20" height="3" fill="#cdb88a"/><path d="M32 13V5" stroke="#6a1d18" stroke-width="4"/></svg>',
  hood:'<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#cdb88a"/><path d="M8 62c4-8 12-12 24-12s20 4 24 12z" fill="#2a1d12"/><path d="M32 8c-12 0-19 12-19 26 0 8 2 13 5 17h28c3-4 5-9 5-17C51 20 44 8 32 8z" fill="#2a1d12"/><ellipse cx="32" cy="34" rx="8.5" ry="11" fill="#5a4632"/><path d="M27 33h3.5M33.5 33h3.5" stroke="#d9c49b" stroke-width="1.6"/></svg>'
@@ -537,6 +539,7 @@ function render(){
   const canForge=!!forgeId&&(forgeId===me.id||profiles[me.id].show_partner_strength!==false);
   if(page==='forge'&&!canForge)page='camp';
   const top=$('top');top.innerHTML='';
+  if(PREVIEW_LVL){const pv=mk('div','','card banner center');pv.appendChild(mk('div','Предпросмотр облика: '+PREVIEW_LVL+' уровень. Настоящий опыт не меняется.','gold'));const a=mk('a','Выйти из предпросмотра');a.href=location.pathname;a.style.color='var(--gold2)';pv.appendChild(a);top.appendChild(pv)}
   top.append(heroes(G),dayBanner(G));
   if(G&&G.R[viewId])top.appendChild(xpBlock(G,viewId));
   const box=$('cards');box.innerHTML='';
@@ -565,7 +568,7 @@ function heroes(G){
     h.onclick=()=>{viewId=id;if(page!=='scrolls'&&page!=='log')page='camp';sheet=null;edDay='t';progView=0;render()};
     const pic=mk('div','','pic');
     const glyph=planOf(id).train?GLYPH.knight:GLYPH.hood;
-    const r=G&&G.R[id],tier=tierOf(r?r.lvl:1);
+    const r=G&&G.R[id],shownLvl=PREVIEW_LVL||(r?r.lvl:1),tier=tierOf(shownLvl);
     h.classList.add('t'+tier);
     if(tier>=3)['g1','g2','g3','g4'].forEach(g=>h.appendChild(mk('span','','gem '+g)));
     if(tier>=4)for(let k=0;k<7;k++){const sp=mk('span','','spark');sp.style.left=(8+Math.random()*84).toFixed(0)+'%';sp.style.setProperty('--d',(2.2+Math.random()*2).toFixed(1)+'s');sp.style.setProperty('--dl',(-Math.random()*4).toFixed(1)+'s');sp.style.setProperty('--dx',(Math.random()*24-12).toFixed(0)+'px');h.appendChild(sp)}
@@ -576,9 +579,9 @@ function heroes(G){
       im.src=srcs[0];pic.appendChild(im);
     }else pic.innerHTML=glyph;
     h.appendChild(pic);
-    if(tierMem[id]&&tier>tierMem[id]&&id===me.id)toast('Твой облик изменился!');
+    if(!PREVIEW_LVL&&tierMem[id]&&tier>tierMem[id]&&id===me.id)toast('Твой облик изменился!');
     tierMem[id]=tier;
-    h.appendChild(mk('div',String(r?r.lvl:1),'badge'));
+    h.appendChild(mk('div',String(shownLvl),'badge'));
     h.appendChild(mk('div',pr.name,'name'));
     w.appendChild(h);
   });
