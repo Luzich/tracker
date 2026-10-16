@@ -13,7 +13,9 @@
 :root{--line:#4a3a2a;--gold:#c9a24a;--gold2:#f2d38a;--txt:#eadfc8;--dim:#a8977a;--green2:#6fa64a;--ink:#2a1d12}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{background:#0f0c0a}
-body{margin:0 auto;max-width:480px;min-height:100vh;color:var(--txt);font-family:'Alegreya',Georgia,serif;font-size:16px;line-height:1.35;padding:calc(env(safe-area-inset-top,0px) + 6px) 12px calc(env(safe-area-inset-bottom,0px) + 92px);background:radial-gradient(120% 60% at 50% 0%,#2b211a 0%,#15100d 55%,#0f0c0a 100%) fixed}
+body{margin:0 auto;max-width:480px;min-height:100vh;color:var(--txt);font-family:'Alegreya',Georgia,serif;font-size:16px;line-height:1.35;padding:calc(env(safe-area-inset-top,0px) + 6px) 12px calc(env(safe-area-inset-bottom,0px) + 92px);background:none}
+/* Фон приложения: отдельный неподвижный слой (на iPhone background-attachment:fixed не работает) */
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(#0f0c0a59,#0f0c0a8c 60%,#0f0c0ab3),url('img/bg.jpg') center/cover no-repeat,radial-gradient(120% 60% at 50% 0%,#2b211a 0%,#15100d 55%,#0f0c0a 100%)}
 h1{position:relative;z-index:1;font-family:'Alegreya SC',Georgia,serif;font-weight:700;font-size:21px;text-align:center;color:var(--gold2);margin:6px 0 10px;letter-spacing:.05em;text-shadow:0 2px 0 #000,0 0 12px #c9a24a44}
 section{display:none;position:relative;z-index:1}section.on{display:block}
 input,button,textarea{font:inherit;color:var(--txt);border-radius:6px;padding:10px;margin:4px 0}
@@ -23,7 +25,7 @@ textarea{min-height:70px;resize:vertical}
 button{cursor:pointer;background:linear-gradient(#3b2d22,#211812);border:1px solid #6b5236;box-shadow:inset 0 1px 0 #ffffff17,0 2px 4px #0007;font-family:'Alegreya SC',Georgia,serif}
 button:active{transform:translateY(1px);filter:brightness(1.15)}
 button:disabled{opacity:.5}
-.card{position:relative;background:linear-gradient(#271f19,#1b1511);border:1px solid #3e3024;border-radius:8px;padding:12px;margin:10px 0;box-shadow:0 0 0 1px #0a0806,0 8px 18px #0009,inset 0 1px 0 #ffffff0d}
+.card{position:relative;background:linear-gradient(#271f19d9,#1b1511e6);border:1px solid #3e3024;border-radius:8px;padding:12px;margin:10px 0;box-shadow:0 0 0 1px #0a0806,0 8px 18px #0009,inset 0 1px 0 #ffffff0d}
 .card::before{content:'';position:absolute;inset:3px;border:1px solid #c9a24a2b;border-radius:6px;pointer-events:none}
 b{font-family:'Alegreya SC',Georgia,serif;letter-spacing:.03em;color:#f0e2c2}
 .head{text-align:center}
@@ -71,7 +73,7 @@ input[type=checkbox]{width:auto;margin-right:8px;accent-color:#c9a24a}
 body.inapp>h1{display:none}
 .topbar{display:flex;justify-content:flex-end;gap:4px;margin:-4px 0 6px}
 .topbar button{padding:4px 10px;font-size:13px;margin:0}
-.heroes{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:10px;background:linear-gradient(#1c2620,#141a16);border:1px solid #3a4a3a;border-radius:8px;box-shadow:inset 0 0 0 3px #0a0d0b,0 6px 14px #0009}
+.heroes{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:10px;background:linear-gradient(#1c2620d9,#141a16e6);border:1px solid #3a4a3a;border-radius:8px;box-shadow:inset 0 0 0 3px #0a0d0b,0 6px 14px #0009}
 .hero{position:relative;background:radial-gradient(circle at 50% 40%,#e8d7ae,#c6ad7d 70%,#a88c5c);border:3px solid #6b5236;border-radius:4px;padding:6px 6px 32px;cursor:pointer;box-shadow:inset 0 0 18px #6b4f2a88,0 3px 8px #000a;transition:box-shadow .2s,border-color .2s}
 .hero.on{border-color:var(--gold);box-shadow:inset 0 0 18px #6b4f2a88,0 0 0 2px #f2d38a66,0 0 18px #c9a24a66}
 .hero .pic{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:2px;background:#cdb88a}
@@ -95,14 +97,15 @@ body.inapp>h1{display:none}
 .pip.miss{background:#3a1512;border-color:#6a2a22}
 .pip.now{outline:2px solid #f2d38a;outline-offset:2px}
 .xpinfo{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--dim);margin:8px 2px 0}
-.dash{margin:12px 0;padding:10px;background:linear-gradient(#211a15,#17120f);border:1px solid #4a3a2a;border-radius:8px;box-shadow:inset 0 0 0 3px #0a0806,0 8px 18px #000a}
+.dash{margin:12px 0;padding:10px;background:linear-gradient(#211a15cc,#17120fd9);border:1px solid #4a3a2a;border-radius:8px;box-shadow:inset 0 0 0 3px #0a0806,0 8px 18px #000a}
 .dash-t{text-align:center;font-family:'Alegreya SC',serif;font-size:18px;color:#efe0c0;margin:2px 0 10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .panel{border:2px solid #4a3a2a;border-radius:6px;padding:0 0 8px;overflow:hidden;box-shadow:inset 0 0 0 1px #0008,0 4px 10px #0008;text-align:center}
 .panel .ph{font-family:'Alegreya SC',serif;font-weight:700;font-size:14px;padding:6px 4px;letter-spacing:.03em;border-bottom:1px solid #0008}
 .panel.red{background:linear-gradient(#3a1a17,#24120f)}.panel.red .ph{background:linear-gradient(#6a1d18,#481210);color:#f3dcc4}
 .panel.blue{background:linear-gradient(#17283a,#101a26)}.panel.blue .ph{background:linear-gradient(#1f3d5c,#142a42);color:#dbe9f7}
-.panel.green{background:linear-gradient(#22301e,#161f13);margin-top:10px}.panel.green .ph{background:linear-gradient(#34482a,#22321b);color:#e3efd2}
+.panel.green{background:linear-gradient(#22301e,#161f13);margin-top:10px}
+.panel.green .arch{background:linear-gradient(#161f13b3,#161f13d9),url('img/travel.png') center/cover;border-radius:4px;margin:6px 8px 0;padding:4px 6px 0}.panel.green .ph{background:linear-gradient(#34482a,#22321b);color:#e3efd2}
 .panel.tap,.psub.tap{cursor:pointer}.panel.tap:active,.psub.tap:active{filter:brightness(1.15)}
 .pv{font-family:'Alegreya SC',serif;font-size:15px;color:#f0e2c2;margin:4px 6px}
 .pv.small{font-size:13px}.big-v{font-size:24px;text-align:center;margin:10px 0}
@@ -122,7 +125,7 @@ body.inapp>h1{display:none}
 .arch-v{position:absolute;left:0;right:0;bottom:4px}
 .deed{display:flex;justify-content:space-between;gap:8px;padding:6px 2px;border-bottom:1px dashed #3e3024}
 .deed.done span:first-child{color:var(--gold2)}
-#nav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:center;background:linear-gradient(#1d1612,#0f0b09);border-top:2px solid #5a4632;box-shadow:0 -6px 16px #000c;padding:6px 6px calc(env(safe-area-inset-bottom,0px) + 6px)}
+#nav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:center;background:linear-gradient(#1d1612f2,#0f0b09);border-top:2px solid #5a4632;box-shadow:0 -6px 16px #000c;padding:6px 6px calc(env(safe-area-inset-bottom,0px) + 6px)}
 body:not(.inapp) #nav{display:none}
 #nav .in{display:flex;width:100%;max-width:480px;justify-content:space-around}
 #nav button{background:none;border:none;box-shadow:none;display:flex;flex-direction:column;align-items:center;gap:2px;color:#a8977a;font-size:13px;padding:4px 4px;margin:0;min-width:56px}
@@ -475,7 +478,16 @@ const SFX={
  chapter:()=>{tone(98,0,1.8,'sine',.22);tone(196,0,1.4,'triangle',.07);tone(294,.06,1.1,'sine',.05)},
  cheer:()=>[330,440,554].forEach((f,i)=>tone(f,i*.09,.25,'sawtooth',.04))
 };
-function sfx(n){if(soundOn&&SFX[n])try{SFX[n]()}catch(e){}}
+// Если положить в папку sounds репозитория файлы с этими именами, вместо синтеза заиграют они
+const SOUND_FILES={drop:'sounds/drop.mp3',add:'sounds/add.mp3',forge:'sounds/forge.mp3',level:'sounds/level.mp3',quest:'sounds/quest.mp3',chapter:'sounds/chapter.mp3',cheer:'sounds/cheer.mp3'};
+const soundReady={};
+try{Object.entries(SOUND_FILES).forEach(([k,u])=>{const a=new Audio();a.preload='auto';a.addEventListener('canplaythrough',()=>{soundReady[k]=a},{once:true});a.addEventListener('error',()=>{},{once:true});a.src=u})}catch(e){}
+function sfx(n){
+  if(!soundOn)return;
+  const a=soundReady[n];
+  if(a){try{const c=a.cloneNode();c.volume=0.7;const pr=c.play();if(pr&&pr.catch)pr.catch(()=>{});return}catch(e){}}
+  if(SFX[n])try{SFX[n]()}catch(e){}
+}
 function toast(msg){const t=mk('div',msg,'toast');document.body.appendChild(t);setTimeout(()=>t.classList.add('show'),20);setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),400)},3000)}
 function progressCheck(){
   if(!season||!me)return;
@@ -969,10 +981,10 @@ function questCard(q){
 }
 function renderQuests(box,G){
   if(!G.two){box.appendChild(mk('div','Свитки откроются, когда в хрониках будут оба героя','sub'));return}
-  box.appendChild(mk('b','Свитки испытания','gold'));
+  box.appendChild(mk('div','Свитки испытания','dash-t mt'));
   G.S.forEach(q=>box.appendChild(questCard(q)));
   const cur=G.C[G.C.length-1];
-  box.appendChild(mk('b','Свитки главы '+cur.c+(cur.ended?' (завершена)':''),'gold'));
+  box.appendChild(mk('div','Свитки главы '+cur.c+(cur.ended?' (завершена)':''),'dash-t mt'));
   cur.Q.forEach(q=>box.appendChild(questCard(q)));
   box.appendChild(mk('div','День в хрониках идёт с 12:00 до 12:00. Подвиги дня: мана, эссенция плоти, странствие и трапеза в летописи, каждый +15 XP, за все сразу ещё +20. Ратный труд в кузне: до +30 XP, пропорционально выполненным упражнениям дня. Достойный день: выполнены все подвиги или все кроме одного, либо привал. В конце главы награда до 150 XP за верность клятве и благословение союза +100 каждому, если оба держали клятву на 70%+. Высший уровень: '+MAXLVL+'.','sub mt'));
 }
