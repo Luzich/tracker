@@ -177,7 +177,7 @@ body:not(.inapp) #nav{display:none}
 .asc .old,.asc .new{transition:opacity .15s}
 .asc .new{position:absolute;inset:0;opacity:0}
 .asc.boom .old{opacity:0}.asc.boom .new{opacity:1}
-.asc.charge .old{animation:charge 1.8s ease-in forwards}
+.asc.charge .old{animation:charge var(--charge,1.8s) ease-in forwards}
 .asc.charge .shake{animation:shake .09s linear infinite}
 @keyframes charge{0%{filter:brightness(1)}70%{filter:brightness(1.8) saturate(1.3)}100%{filter:brightness(3.2) saturate(.4);transform:scale(1.06)}}
 @keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(-2px,1px)}50%{transform:translate(2px,-1px)}75%{transform:translate(-1px,-2px)}100%{transform:translate(1px,2px)}}
@@ -567,7 +567,7 @@ const SOUND_FILES={
  drop:[1,2,3,4,5,6].map(n=>'sounds/drop-'+n+'.mp3'),
  protein:[1,2,3,4,5,6,7].map(n=>'sounds/protein-'+n+'.mp3'),
  add:'sounds/click.mp3',click:'sounds/click.mp3',forge:'sounds/forge.mp3',
- level:'sounds/level.mp3',quest:'sounds/quest.mp3',chapter:'sounds/chapter.mp3',cheer:'sounds/cheer.mp3',charge:'sounds/charge.mp3',ascend:'sounds/ascend.mp3'};
+ level:'sounds/level.mp3',quest:'sounds/quest.mp3',chapter:'sounds/chapter.mp3',cheer:'sounds/cheer.mp3',charge:'sounds/charge.mp3',ascend:[1,2,3,4].map(n=>'sounds/ascend-'+n+'.mp3')};
 // Звуки заранее раскладываются в память (Web Audio): играют мгновенно и не блокируются телефоном после загрузки данных.
 // У звука может быть несколько вариантов: каждый раз играет случайный, но не тот же, что в прошлый раз.
 const soundBuf={},soundLast={};
@@ -711,12 +711,15 @@ function playAscension(){
   ov.onclick=()=>{
     if(stageN===0){
       stageN=1;ac();sfx('charge');ov.classList.add('charge');
+      // Длительность нарастания подстраивается под звук нарастания, чтобы вспышка совпала с его концом
+      const cb=soundBuf.charge&&soundOn?soundBuf.charge[0]:null,chargeMs=cb?Math.max(1100,Math.round(cb.duration*1000)+100):1800;
+      ov.style.setProperty('--charge',chargeMs+'ms');
       setTimeout(()=>{
         ov.classList.add('boom');sfx('ascend');
         for(let k=0;k<34;k++){const p=mk('span','','burst'),ang=Math.random()*Math.PI*2,d=110+Math.random()*190;p.style.setProperty('--x',(Math.cos(ang)*d).toFixed(0)+'px');p.style.setProperty('--y',(Math.sin(ang)*d).toFixed(0)+'px');p.style.setProperty('--t',(0.9+Math.random()*0.8).toFixed(2)+'s');stage.appendChild(p)}
         setTimeout(()=>ov.classList.add('reveal'),120);
         setTimeout(()=>{ov.classList.add('done');stageN=2},1800);
-      },1800);
+      },chargeMs);
     }else if(stageN===2){stageN=3;close()}
   };
 }
